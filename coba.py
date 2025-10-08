@@ -34,6 +34,7 @@ gabung = pd.merge(dfCEO, dfSIC, on='SIC_2digit', how='left')
 rata_rata1 = gabung.groupby('SIC_1digit')[['agree', 'consc', 'extra', 'neuro', 'openn']].mean()
 rata_rata1 = pd.merge(
     rata_rata1,
+    #Munculin digit SIC dan descriptionnya
     dfSIC[['SIC_1digit', 'Description_1']].drop_duplicates(),
     on='SIC_1digit',
     how='left'
@@ -41,20 +42,39 @@ rata_rata1 = pd.merge(
 
 #Cari rata-rata tiap SIC 2 digit
 rata_rata2 = gabung.groupby('SIC_2digit')[['agree', 'consc', 'extra', 'neuro', 'openn']].mean()
+rata_rata2 = pd.merge(
+    rata_rata2,
+    #Munculin digit SIC dan descriptionnya
+    dfSIC[['SIC_2digit', 'Description_2']].drop_duplicates(),
+    on='SIC_2digit',
+    how='left'
+)
 
-rata_transpose1 = rata_rata1.T
-rata_transpose2 = rata_rata2.T
+rata_rata_indexed1 = rata_rata1.set_index('SIC_1digit')
+rata_rata_indexed2 = rata_rata2.set_index('SIC_2digit')
 
+# Transpose matrixnya
+rata_transpose1 = rata_rata_indexed1.T
+rata_transpose2 = rata_rata_indexed2.T
+
+# Title
 st.title("Personality CEO 10 Major Division")
+
 
 fig1 = go.Figure()
 for kolom in rata_transpose1.columns:
+    desc = rata_rata1.loc[rata_rata1['SIC_1digit'] == kolom, 'Description_1'].values[0]
+    
     fig1.add_trace(go.Scatter(
         x=rata_transpose1.index,
-        y=rata_transpose1[kolom],
+        y=rata_transpose1.iloc[:-1][kolom],
         mode='lines+markers',
-        name=f'SIC {kolom}',
-        hovertemplate='SIC ' + str(kolom) + '<br>Dimensi: %{x}<br>Skor: %{y:.2f}<extra></extra>'
+        name=f"SIC {kolom}",
+        hovertemplate=(
+            str(kolom) + '. ' + desc + '<br>' +
+            'Dimensi: %{x}<br>' +
+            'Skor: %{y:.2f}<extra></extra>'
+        )
     ))
 
 fig1.update_layout(
@@ -65,32 +85,36 @@ fig1.update_layout(
     template="simple_white"
 )
 
-st.plotly_chart(fig1, use_container_width=True)
+rata_transpose1 = rata_transpose1.iloc[:-1]   # buang baris pertama
 
-fig1, ax1 = plt.subplots(figsize=(6, 5))
-fig2, ax2 = plt.subplots(figsize=(6, 5))
 
-for kolom in rata_transpose1.columns:
-    ax1.plot(rata_transpose1.index, rata_transpose1[kolom], marker='o', label=f'SIC {kolom}')
-ax1.set_ylim(1, 7)
-ax1.set_xlabel("Big Five Personality Traits")
-ax1.set_ylabel("Rata-rata Skor")
-ax1.legend(title='SIC_1digit', bbox_to_anchor=(1.05, 1), loc='upper left')
-ax1.grid(True)
-
+fig2 = go.Figure()
 for kolom in rata_transpose2.columns:
-    ax2.plot(rata_transpose2.index, rata_transpose2[kolom], marker='o', label=f'SIC {kolom}')
-ax2.set_ylim(1, 7)
-ax2.set_xlabel("Big Five Personality Traits")
-ax2.set_ylabel("Rata-rata Skor")
-ax2.legend(title='SIC_1digit', bbox_to_anchor=(1.05, 1), loc='upper left')
-ax2.grid(True)
+    desc = rata_rata2.loc[rata_rata2['SIC_2digit'] == kolom, 'Description_2'].values[0]
+
+    fig2.add_trace(go.Scatter(
+        x=rata_transpose2.index,
+        y=rata_transpose2.iloc[:-1][kolom],
+        mode='lines+markers',
+        name=f"SIC {kolom}",
+        hovertemplate=(
+            str(kolom) + '. ' + desc + '<br>' +
+            'Dimensi: %{x}<br>' +
+            'Skor: %{y:.2f}<extra></extra>'
+        )
+    ))
+
+fig2.update_layout(
+    title="Rata-rata Skor Kepribadian per SIC 2 Digit",
+    xaxis_title="Dimensi Kepribadian",
+    yaxis_title="Rata-rata Skor",
+    yaxis=dict(range=[1, 7]),
+    template="simple_white"
+)
 
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("SIC 1 Digit")
-    st.pyplot(fig1)
+    st.plotly_chart(fig1)
 with col2:
-    st.subheader("SIC 2 Digit")
-    st.pyplot(fig2)
+    st.plotly_chart(fig2)
