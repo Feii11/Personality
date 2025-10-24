@@ -1,0 +1,175 @@
+# sic_utils.py (replace existing)
+import pandas as pd
+import numpy as np
+from itertools import combinations
+
+TRAIT_COLS = ['agree', 'consc', 'extra', 'neuro', 'openn']
+
+def prepare_data(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Standardisasi kolom SIC, tambahkan kolom SIC_2digit di dfCEO dan dfSIC.
+    Tidak mengubah kolom SIC_1digit karena sudah tersedia di dfSIC.
+    Mengembalikan (dfCEO_clean, dfSIC_clean).
+    """
+    dfCEO = dfCEO.copy()
+    dfSIC = dfSIC.copy()
+
+    
+    # ---------- dfCEO ----------
+    if 'SIC' in dfCEO.columns:
+        dfCEO['SIC'] = dfCEO['SIC'].astype(str).str.zfill(4)
+        dfCEO['SIC_2digit'] = dfCEO['SIC'].str[:2]
+
+    if 'SIC_2digit' in dfCEO.columns:
+        dfCEO['SIC_2digit'] = dfCEO['SIC_2digit'].astype(str).str.zfill(2)
+    else:
+        raise ValueError("dfCEO tidak memiliki kolom 'SIC' atau 'SIC_2digit'")
+
+    # ---------- Samakan tipe data dulu ----------
+    dfSIC['SIC_2digit'] = dfSIC['SIC_2digit'].astype(str).str.zfill(2)
+
+    # ---------- Mapping SIC_1digit dari dfSIC ----------
+    if 'SIC_2digit' in dfSIC.columns and 'SIC_1digit' in dfSIC.columns:
+        mapping = dfSIC.drop_duplicates(subset=['SIC_2digit'])[['SIC_2digit', 'SIC_1digit']]
+        dfCEO = dfCEO.merge(mapping, on='SIC_2digit', how='left')
+    else:
+        raise ValueError("dfSIC harus memiliki kolom 'SIC_2digit' dan 'SIC_1digit' untuk pemetaan.")
+
+
+
+    # ---------- dfSIC ----------
+    if 'SIC' in dfSIC.columns:
+        dfSIC['SIC'] = dfSIC['SIC'].astype(str).str.zfill(4)
+        dfSIC['SIC_2digit'] = dfSIC['SIC'].str[:2]
+
+    if 'SIC_2digit' in dfSIC.columns:
+        dfSIC['SIC_2digit'] = dfSIC['SIC_2digit'].astype(str).str.zfill(2)
+    else:
+        raise ValueError("Kolom 'SIC_2digit' tidak ditemukan di dfSIC")
+    
+    return dfCEO, dfSIC
+
+
+def get_mean_sic1(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> pd.DataFrame:
+    """
+    Hitung rata-rata skor personality per SIC_1digit.
+    Tambahkan Description_1 dari dfSIC jika ada.
+    """
+    dfCEO = dfCEO.copy()
+    dfSIC = dfSIC.copy()
+
+    # Pastikan format kolom kunci seragam
+    dfCEO['SIC_1digit'] = dfCEO['SIC_1digit'].astype(str).str.strip()
+    dfSIC['SIC_1digit'] = dfSIC['SIC_1digit'].astype(str).str.strip()
+
+    # Hitung rata-rata berdasarkan SIC_1digit
+    rata1 = dfCEO.groupby('SIC_1digit')[TRAIT_COLS].mean(numeric_only=True).reset_index()
+
+    # Gabungkan dengan deskripsi (jika ada di dfSIC)
+    if 'Description_1' in dfSIC.columns:
+        desc = dfSIC[['SIC_1digit', 'Description_1']].drop_duplicates()
+        rata1 = rata1.merge(desc, on='SIC_1digit', how='left')
+    else:
+        # fallback kalau description belum ada
+        rata1['Description_1'] = rata1['SIC_1digit']
+
+    return rata1
+
+def get_mean_sic2(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> pd.DataFrame:
+    """
+    Hitung rata-rata skor personality per SIC_2digit.
+    Kembalikan dataframe: SIC_2digit + TRAIT_COLS + SIC_1digit + Description_2 (jika ada).
+    """
+    dfCEO = dfCEO.copy()
+    dfSIC = dfSIC.copy()
+
+    # Pastikan format kunci sama
+    dfCEO['SIC_2digit'] = dfCEO['SIC_2digit'].astype(str).str.strip().str.zfill(2)
+    dfSIC['SIC_2digit'] = dfSIC['SIC_2digit'].astype(str).str.strip().str.zfill(2)
+
+    # Hitung rata-rata berdasarkan SIC_2digit
+    rata2 = dfCEO.groupby('SIC_2digit')[TRAIT_COLS].mean(numeric_only=True).reset_index()
+
+    # Tambahkan kolom SIC_1digit dari dfCEO (lebih konsisten dibanding hasil merge)
+    extra = dfCEO[['SIC_2digit', 'SIC_1digit']].drop_duplicates()
+
+    # Jika dfSIC punya Description_2, tambahkan juga
+    if 'Description_2' in dfSIC.columns:
+        desc = dfSIC[['SIC_2digit', 'Description_2']].drop_duplicates()
+        extra = extra.merge(desc, on='SIC_2digit', how='left')
+
+    # Gabungkan tambahan kolom dengan hasil rata-rata
+    rata2 = rata2.merge(extra, on='SIC_2digit', how='left')
+
+    return rata2
+
+def build_hover_maps(dfSIC: pd.DataFrame) -> tuple[dict, dict]:
+    """
+    Kembalikan dua dict: hover_map_1 (SIC_1digit -> Description_1) dan hover_map_2 (SIC_2digit -> Description_2)
+    """
+    hover_map_1 = {}
+    hover_map_2 = {}
+
+    if 'SIC_1digit' in dfSIC.columns and 'Description_1' in dfSIC.columns:
+        hover_map_1 = dict(dfSIC[['SIC_1digit', 'Description_1']].drop_duplicates().values)
+
+    if 'SIC_2digit' in dfSIC.columns and 'Description_2' in dfSIC.columns:
+        hover_map_2 = dict(dfSIC[['SIC_2digit', 'Description_2']].drop_duplicates().values)
+
+    return hover_map_1, hover_map_2
+
+import pandas as pd
+
+def prepare_long_format(df, id_col, desc_col):
+    """
+    Mengubah dataframe rata-rata ke format long:
+    dari kolom agree, consc, extra, neuro, openn → baris Dimensi_Kepribadian dan Rata_Rata
+    """
+    long_df = df.melt(
+        id_vars=[id_col, desc_col],
+        value_vars=['agree', 'consc', 'extra', 'neuro', 'openn'],
+        var_name='Dimensi_Kepribadian',
+        value_name='Rata_Rata'
+    )
+
+    # Ganti label jadi versi panjang (sesuai plots.py)
+    label_map = {
+        'agree': 'Agreeableness',
+        'consc': 'Conscientiousness',
+        'extra': 'Extraversion',
+        'neuro': 'Neuroticism',
+        'openn': 'Openness'
+    }
+    long_df['Dimensi_Kepribadian'] = long_df['Dimensi_Kepribadian'].map(label_map)
+    return long_df
+
+TRAIT_COLS = ['agree', 'consc', 'extra', 'neuro', 'openn']
+
+def compute_G(values):
+    """Hitung total absolute difference (G) untuk satu trait."""
+    n = len(values)
+    total_diff = 0
+    for i in range(n):
+        for j in range(i + 1, n):
+            total_diff += abs(values[i] - values[j])
+    return total_diff
+
+def compute_G_per_trait(df, group_col):
+    """
+    Hitung G untuk setiap trait personality berdasarkan kolom grup (misal SIC_1digit atau SIC_2digit).
+    """
+    results = []
+
+    grouped = df.groupby(group_col)
+
+    for group_id, group_data in grouped:
+        for trait in TRAIT_COLS:
+            G_value = compute_G(group_data[trait].values)
+            results.append({
+                group_col: group_id,
+                "Personality Trait": trait,
+                "G(Trait)": G_value
+            })
+
+    return pd.DataFrame(results)
+

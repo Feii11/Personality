@@ -18,12 +18,23 @@ dfSIC = pd.DataFrame(pd.read_excel('data/2 digit.xlsx'))
 st.markdown("## :bar_chart: Personality CEO")
 st.markdown("---")
 
-# Load data
-dataCEO = pd.read_csv('data/Data.csv')
-dataSIC = pd.read_excel('data/2 digit.xlsx')
+@st.cache_data
+def load_data():
+    dfCEO = pd.read_csv('data/Data.csv')
+    dfSIC = pd.read_excel('data/2 digit.xlsx')
+    dfCEO['SIC'] = dfCEO['SIC'].astype(str).str.zfill(4)
+    dfCEO['SIC_2digit'] = dfCEO['SIC'].str[:2]
+    dfSIC['SIC_2digit'] = dfSIC['SIC_2digit'].astype(str).str.zfill(2)
+    return dfCEO, dfSIC
 
-dfCEO = pd.DataFrame(dataCEO)
-dfSIC = pd.DataFrame(dataSIC)
+@st.cache_data
+def compute_means(dfCEO, dfSIC):
+    rata1 = SIC1.SIC_1digit(dfCEO, dfSIC)
+    rata2 = SIC1.SIC_2digit(dfCEO, dfSIC)
+    return rata1, rata2
+
+dfCEO, dfSIC = load_data()
+rata_rata1, rata_rata2 = compute_means(dfCEO, dfSIC)
 
 # Data Cleaning
 dfCEO['SIC'] = dfCEO['SIC'].astype(str).str.zfill(4)
@@ -48,7 +59,7 @@ def switch_tab(tab_name):
     st.session_state.active_tab = tab_name
 
 # Pilihan tab
-tab1, tab2 = st.tabs(["📈 Rata-rata", "📊 Standar Deviasi"])
+tab1, tab2 = st.tabs(["Rata-rata", "Standar Deviasi"])
 
 # Session untuk tab
 active_tab = st.session_state.active_tab
@@ -159,169 +170,150 @@ with tab1:
 
 # Tab 2 - Standar Deviasi
 with tab2:
-    # Bagi kolom untuk filter dan chart
-    col_filter, col_table = st.columns([1, 4], gap="large")
-
-    # ICON FILTER
-    file_path = "images/filter_icon.jpg"
-    with open(file_path, "rb") as f:
-        data = f.read()
-    encoded = base64.b64encode(data).decode()
-
-    with col_filter:
-        st.markdown(
-        f"""
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <img src="data:image/png;base64,{encoded}" width="40" height="40">
-            <h4 style="margin: 0;">FILTER</h4>
-        </div>
-        """,
-        unsafe_allow_html=True
-        )
-
-        # Filter personality traits
-        list_traits = ['agree', 'consc', 'extra', 'neuro', 'openn']
-        label_traits = {
-            'agree': 'Agreeableness',
-            'consc': 'Conscientiousness',
-            'extra': 'Extraversion',
-            'neuro': 'Neuroticism',
-            'openn': 'Openness'
-        }
-
-        st.markdown("#### Dimensi Kepribadian")
-        if "selected_traits" not in st.session_state:
-            st.session_state.selected_traits = list_traits.copy()
-
-        selected_traits = []
-        for t in list_traits:
-            checked = st.checkbox(label_traits[t], value=t in st.session_state.selected_traits, key=f"traits_{t}")
-            if checked:
-                selected_traits.append(t)
-        st.session_state.selected_traits = selected_traits
-
-        st.markdown("---")
-        
-        # Filter SIC 1 digit
-        list_sic1 = sorted(gabung['SIC_1digit'].unique())
-        st.markdown("#### Kategori SIC 1 Digit")
-        if "selected_sic_tab2" not in st.session_state:
-            st.session_state.selected_sic_tab2 = list_sic1.copy()
-
-        selected_sic_tab2 = []
-        for item in list_sic1:
-            checked = st.checkbox(f"SIC {item}", value=item in st.session_state.selected_sic_tab2, key=f"sic_tab2_{item}")
-            if checked:
-                selected_sic_tab2.append(item)
-        st.session_state.selected_sic_tab2 = selected_sic_tab2
-
-
-    # Kolom utama
-    with col_table:
-        selected_traits = st.session_state.selected_traits
-        selected_sic_tab2 = st.session_state.selected_sic_tab2
-
-        if len(selected_traits) == 0:
-            st.warning("Pilih minimal satu dimensi kepribadian untuk ditampilkan.")
-        else:
+    # ===========================
+            # BOX PLOT dari Rata-rata SIC 1 Digit (pakai function Mean.SIC_1digit)
             # ===========================
-            # Hitung rata-rata personality per CEO
-            # ===========================
-            gabung['mean_personality'] = gabung[selected_traits].mean(axis=1)
+            st.subheader("Sebaran Rata-Rata Kepribadian per Dimensi (SIC 1 Digit)")
 
-            # Filter berdasarkan SIC 1 digit
-            gabung_filtered = gabung[gabung['SIC_1digit'].isin(selected_sic_tab2)]
+            # Ambil hasil rata-rata dari function yang sudah ada
+            rata_rata1 = Mean.SIC_1digit(dfCEO, dfSIC)
 
-            # ===========================
-            # BOX PLOT
-            # ===========================
-            st.subheader("📦 Sebaran Skor Kepribadian Rata-rata per SIC 1 Digit (Box Plot)")
+            # Pastikan kolom personality sesuai
+            traits = ['agree', 'consc', 'extra', 'neuro', 'openn']
+
+            # Ubah ke long format agar bisa dipakai untuk boxplot
+            rata_rata1_long = rata_rata1.melt(
+                id_vars=['SIC_1digit', 'Description_1'],
+                value_vars=traits,
+                var_name='Dimensi_Kepribadian',
+                value_name='Rata_Rata'
+            )
+
+            # Mapping label trait ke nama lengkap
+            label_traits = {
+                'agree': 'Agreeableness',
+                'consc': 'Conscientiousness',
+                'extra': 'Extraversion',
+                'neuro': 'Neuroticism',
+                'openn': 'Openness'
+            }
+            rata_rata1_long['Dimensi_Kepribadian'] = rata_rata1_long['Dimensi_Kepribadian'].map(label_traits)
 
             import plotly.express as px
-            fig_box = px.box(
-                gabung_filtered,
-                x='SIC_1digit',
-                y='mean_personality',
-                color='SIC_1digit',
-                title="Sebaran Skor Rata-rata Kepribadian Berdasarkan SIC 1 Digit",
-                points='all'
+
+            # Buat box plot dari rata-rata tiap SIC 1 digit
+            fig_box_avg = px.box(
+                rata_rata1_long,
+                x='Dimensi_Kepribadian',
+                y='Rata_Rata',
+                points='all',  # tampilkan semua titik SIC 1 digit
+                hover_data={
+                    'SIC_1digit': True,
+                    'Description_1': True
+                },
+                color='Dimensi_Kepribadian',
+                title="Sebaran Rata-Rata Kepribadian per Dimensi (SIC 1 Digit)"
             )
 
-            fig_box.update_xaxes(categoryorder='category ascending')
-
-            fig_box.update_layout(
-                xaxis_title="SIC 1 Digit",
-                yaxis_title="Rata-rata Dimensi Kepribadian",
-                showlegend=False,
+            fig_box_avg.update_layout(
+                xaxis_title="Dimensi Kepribadian",
+                yaxis_title="Rata-rata Skor",
                 template="simple_white",
-                height=500
+                height=600,
+                showlegend=False
             )
 
-            st.plotly_chart(fig_box, use_container_width=True)
+            st.plotly_chart(fig_box_avg, use_container_width=True)
+
+            # Jumlah kategori SIC 1 digit yang diproses
+            jumlah_sic1 = rata_rata1['SIC_1digit'].nunique()
+            st.markdown(f"**Jumlah SIC 1 digit yang diproses:** {jumlah_sic1}")
 
             # ===========================
-            # STANDAR DEVIASI (Lollipop Chart)
+            # BOX PLOT RATA-RATA SIC 2 DIGIT (berdasarkan filter SIC 1 digit)
             # ===========================
-            st.subheader("🍭 Standar Deviasi Gabungan per SIC 2 Digit (Lollipop Chart)")
+            st.subheader("Sebaran Rata-Rata Kepribadian per Dimensi (SIC 2 Digit)")
 
-            # Hitung std dev berdasarkan personality yang dipilih
-            std_2 = (
-                gabung_filtered
-                .groupby(['SIC_2digit', 'SIC_1digit'])[selected_traits]
-                .std()
-                .mean(axis=1)
-                .reset_index(name='Std_Dev_Gabungan')
+            # Ambil data rata-rata per SIC 2 digit dari function
+            rata_rata2 = Mean.SIC_2digit(dfCEO, dfSIC)
+
+            # Gabungkan deskripsi 1 digit dari dfSIC biar bisa tampilkan "A - Mining"
+            sic1_desc_map = dfSIC[['SIC_1digit', 'Description_1']].drop_duplicates()
+
+            # Merge deskripsi 1 digit ke hasil rata-rata
+            rata_rata2 = rata_rata2.merge(sic1_desc_map, on='SIC_1digit', how='left')
+
+            # Ambil list SIC 1 digit untuk dropdown
+            sic1_options = ['All'] + sorted(rata_rata2['SIC_1digit'].unique())
+            selected_sic1_filter = st.selectbox("Pilih Kategori SIC 1 Digit", sic1_options, index=0, key="sic2_box_filter")
+
+            # Cari deskripsi SIC 1 digit (misal A - Mining)
+            if selected_sic1_filter != 'All':
+                desc_sic1 = rata_rata2.loc[rata_rata2['SIC_1digit'] == selected_sic1_filter, 'Description_1'].iloc[0]
+                title_suffix = f"{selected_sic1_filter} - {desc_sic1}"
+            else:
+                title_suffix = "Semua Kategori"
+
+            # Jika user memilih satu SIC 1 digit, agregasikan data SIC 2 digit di bawahnya
+            if selected_sic1_filter != 'All':
+                rata_rata2_filtered = rata_rata2[rata_rata2['SIC_1digit'] == selected_sic1_filter]
+
+                # Ambil rata-rata kepribadian per SIC 2 digit
+                grouped = rata_rata2_filtered.groupby(
+                    ['SIC_2digit', 'Description_2', 'SIC_1digit', 'Description_1'], as_index=False
+                )[["agree", "consc", "extra", "neuro", "openn"]].mean()
+            else:
+                # Kalau 'All', pakai semua data rata-rata SIC 2 digit
+                grouped = rata_rata2.copy()
+
+            # Hitung jumlah SIC 2 digit yang diproses
+            jumlah_sic2 = grouped['SIC_2digit'].nunique()
+            st.markdown(f"**Jumlah SIC 2 digit yang diproses:** {jumlah_sic2}")
+
+            # Ubah ke format long untuk boxplot
+            traits = ['agree', 'consc', 'extra', 'neuro', 'openn']
+            grouped_long = grouped.melt(
+                id_vars=['SIC_2digit', 'SIC_1digit', 'Description_2'],
+                value_vars=traits,
+                var_name='Dimensi_Kepribadian',
+                value_name='Rata_Rata'
             )
 
-            # Tambahkan deskripsi
-            std_2 = pd.merge(
-                std_2,
-                dfSIC[['SIC_2digit', 'SIC_1digit', 'Description_2']].drop_duplicates(),
-                on=['SIC_2digit', 'SIC_1digit'],
-                how='left'
+            # Mapping label ke nama lengkap
+            label_traits = {
+                'agree': 'Agreeableness',
+                'consc': 'Conscientiousness',
+                'extra': 'Extraversion',
+                'neuro': 'Neuroticism',
+                'openn': 'Openness'
+            }
+            grouped_long['Dimensi_Kepribadian'] = grouped_long['Dimensi_Kepribadian'].map(label_traits)
+
+            import plotly.express as px
+
+            # Buat box plot
+            fig_box_avg2 = px.box(
+                grouped_long,
+                x='Dimensi_Kepribadian',
+                y='Rata_Rata',
+                points='all',
+                hover_data={
+                    'SIC_2digit': True,
+                    'Description_2': True,
+                    'SIC_1digit': True
+                },
+                color='Dimensi_Kepribadian',
+                title=f"Sebaran Rata-Rata Kepribadian per Dimensi (SIC 2 Digit – {title_suffix})"
             )
 
-            # Terapkan kembali filter SIC 1 digit
-            std_2 = std_2[std_2['SIC_1digit'].isin(selected_sic_tab2)]
-
-            # Urutkan dari standar deviasi terbesar ke terkecil
-            std_2_sorted = std_2.sort_values(by='Std_Dev_Gabungan', ascending=False)
-
-            # Buat lollipop chart
-            fig_lollipop = go.Figure()
-
-            # Garis vertikal
-            fig_lollipop.add_trace(go.Scatter(
-                x=std_2_sorted['Std_Dev_Gabungan'],
-                y=std_2_sorted['SIC_2digit'],
-                mode='lines',
-                line=dict(color='lightgray', width=2),
-                showlegend=False
-            ))
-
-            # Titik
-            fig_lollipop.add_trace(go.Scatter(
-                x=std_2_sorted['Std_Dev_Gabungan'],
-                y=std_2_sorted['SIC_2digit'],
-                mode='markers',
-                marker=dict(color='#FF8C00', size=10),
-                hovertemplate=(
-                    "<b>SIC %{y}</b><br>" +
-                    "SIC 1 Digit: %{customdata[0]}<br>" +
-                    "Deskripsi: %{customdata[1]}<br>" +
-                    "Std Dev: %{x:.3f}<extra></extra>"
-                ),
-                customdata=std_2_sorted[['SIC_1digit', 'Description_2']].values,
-                showlegend=False
-            ))
-
-            # Layout
-            fig_lollipop.update_layout(
-                xaxis_title="Standar Deviasi Gabungan",
-                yaxis_title="SIC 2 Digit",
+            fig_box_avg2.update_layout(
+                xaxis_title="Dimensi Kepribadian",
+                yaxis_title="Rata-rata Skor",
                 template="simple_white",
-                height=900,
-                margin=dict(l=100, r=50, t=50, b=50),
+                height=700,
+                showlegend=False
             )
 
-            st.plotly_chart(fig_lollipop, use_container_width=True)
+            st.plotly_chart(fig_box_avg2, use_container_width=True)
+
+
