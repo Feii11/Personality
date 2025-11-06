@@ -1,6 +1,7 @@
 import plotly.graph_objects as go
 import plotly.express as px
 from typing import List
+import pandas as pd
 
 TRAIT_COLS = ['agree', 'consc', 'extra', 'neuro', 'openn']
 TRAIT_LABELS = {
@@ -149,4 +150,34 @@ def plot_G_bar(df, group_col):
         text_auto=".2f"
     )
     fig.update_layout(height=600, showlegend=False)
+    return fig
+
+import plotly.express as px
+
+def plot_cosine_heatmap(sim_df: pd.DataFrame, id_col: str, title: str = None, height: int = 700):
+    """
+    Visualisasikan matriks cosine similarity sebagai heatmap.
+    """
+    fig = px.imshow(
+        sim_df,
+        text_auto=True,  # Set to True to show data values in the heatmap
+        color_continuous_scale="RdBu_r",
+        aspect="auto",
+        origin="upper",
+        labels=dict(x=id_col, y=id_col, color="Cosine Similarity"),
+    )
+
+    fig.update_layout(
+        title=title or f"Cosine Similarity antar {id_col}",
+        height=height,
+        template="simple_white",
+        xaxis_tickangle=-45,
+        xaxis_side='top',
+        margin=dict(l=60, r=20, t=60, b=100)
+    )
+
+    fig.update_traces(
+        hovertemplate="%{y} vs %{x}<br>Cosine = %{z:.3f}<extra></extra>"
+    )
+
     return fig

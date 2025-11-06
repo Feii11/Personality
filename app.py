@@ -3,9 +3,8 @@ import base64
 import streamlit as st
 import pandas as pd
 
-from sic_utils import prepare_data, get_mean_sic1, get_mean_sic2, build_hover_maps, compute_G_per_trait, compute_G, TRAIT_COLS
-from plots import mean_line_chart, boxplot_from_means, errorbar_plot_from_means, plot_G_bar, TRAIT_LABELS
-
+from sic_utils import get_mean_sic1_v2, get_mean_sic2_v2, prepare_data, prepare_data_v2, build_hover_maps, compute_cosine_similarity, TRAIT_COLS
+from plots import mean_line_chart, boxplot_from_means, errorbar_plot_from_means, plot_G_bar, plot_cosine_heatmap, TRAIT_LABELS
 st.set_page_config(page_title="Personality CEO (Refactor)", layout="wide")
 
 # -------------------------
@@ -19,20 +18,27 @@ def load_raw():
 
 @st.cache_data
 def prepare_and_compute():
-    dfCEO_raw, dfSIC_raw = load_raw()
-    dfCEO, dfSIC = prepare_data(dfCEO_raw, dfSIC_raw)
-    mean1 = get_mean_sic1(dfCEO, dfSIC)
-    mean2 = get_mean_sic2(dfCEO, dfSIC)
-    hover1, hover2 = build_hover_maps(dfSIC)
-    return dfCEO, dfSIC, mean1, mean2, hover1, hover2
+    dfCEO, dfSIC = load_raw()
 
-dfCEO, dfSIC, rata_rata1, rata_rata2, hover_map_1, hover_map_2 = prepare_and_compute()
+    prepare_data_v2(dfCEO, dfSIC)
+
+    dfCEO_clean = pd.read_excel('dfCEO_clean.xlsx')
+    
+    get_mean_sic1_v2(dfCEO_clean, dfSIC)
+    get_mean_sic2_v2(dfCEO_clean, dfSIC)
+    compute_cosine_similarity(rata_rata1, 'SIC_1digit')
+
+rata_rata1 = pd.read_excel('mean_sic1.xlsx')
+rata_rata2 = pd.read_excel('mean_sic2.xlsx')
+cosine_sim1 = pd.read_excel('cosine_similarity_SIC_1digit.xlsx')
+# cosine_sim2 = pd.read_excel('cosine_sic2.xlsx', index_col=0)
 
 # -------------------------
 # UI Header
 # -------------------------
 st.markdown("## :bar_chart: Personality CEO")
 st.markdown("---")
+st.button("Load Data", on_click=prepare_and_compute)
 
 # Load & encode filter icon (optional)
 try:
@@ -50,7 +56,7 @@ except FileNotFoundError:
 # -------------------------
 # Tabs
 # -------------------------
-tab1, tab2 , tab3 = st.tabs(["Rata-rata", "Standar Deviasi", "G(personality)"])
+tab1, tab2 , tab3, tab4 = st.tabs(["Rata-rata", "Standar Deviasi", "G(personality)", "Cosine Similarity"])
 
 # Shared filter: SIC 1 digit checkbox list (sticky in left column of tab1)
 with tab1:
@@ -98,7 +104,6 @@ with tab1:
             selected_ids=None
         )
         st.plotly_chart(fig2, use_container_width=True)
-
 
 with tab2:
     rr1_long = rata_rata1.melt(
@@ -158,11 +163,21 @@ with tab2:
 
 with tab3:
     st.subheader("G(Personality) berdasarkan SIC 1 Digit")
-    df_G1 = compute_G_per_trait(dfCEO, 'SIC_1digit')
-    figG1 = plot_G_bar(df_G1, 'SIC_1digit')
-    st.plotly_chart(figG1, use_container_width=True)
+    # df_G1 = compute_G_per_trait(dfCEO, 'SIC_1digit')
+    # figG1 = plot_G_bar(df_G1, 'SIC_1digit')
+    # st.plotly_chart(figG1, use_container_width=True)
 
-    st.subheader("G(Personality) berdasarkan SIC 2 Digit")
-    df_G2 = compute_G_per_trait(dfCEO, 'SIC_2digit')
-    figG2 = plot_G_bar(df_G2, 'SIC_2digit')
-    st.plotly_chart(figG2, use_container_width=True)
+    # st.subheader("G(Personality) berdasarkan SIC 2 Digit")
+    # df_G2 = compute_G_per_trait(dfCEO, 'SIC_2digit')
+    # figG2 = plot_G_bar(df_G2, 'SIC_2digit')
+    # st.plotly_chart(figG2, use_container_width=True)
+
+with tab4:  # atau tab baru
+    st.subheader("Heatmap Cosine Similarity — SIC 1 Digit")
+    fig_sim1 = plot_cosine_heatmap(cosine_sim1, id_col='SIC_1digit', title="Cosine Similarity antar SIC 1 Digit")
+    st.plotly_chart(fig_sim1, use_container_width=True)
+
+    st.subheader("Heatmap Cosine Similarity — SIC 2 Digit")
+    sim2 = compute_cosine_similarity(rata_rata2, 'SIC_2digit', TRAIT_COLS)
+    fig_sim2 = plot_cosine_heatmap(sim2, id_col='SIC_2digit', title="Cosine Similarity antar SIC 2 Digit")
+    st.plotly_chart(fig_sim2, use_container_width=True)
