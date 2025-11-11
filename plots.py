@@ -2,6 +2,9 @@ import plotly.graph_objects as go
 import plotly.express as px
 from typing import List
 import pandas as pd
+from scipy.cluster.hierarchy import linkage, dendrogram
+import numpy as np
+import plotly.figure_factory as ff
 
 TRAIT_COLS = ['agree', 'consc', 'extra', 'neuro', 'openn']
 TRAIT_LABELS = {
@@ -162,7 +165,7 @@ def plot_cosine_heatmap(sim_df: pd.DataFrame, id_col: str, title: str = None, he
         sim_df,
         text_auto=True,  # Set to True to show data values in the heatmap
         color_continuous_scale="RdBu_r",
-        aspect="auto",
+        aspect="equal",  # Changed from "auto" to "equal" to make it square
         origin="upper",
         labels=dict(x=id_col, y=id_col, color="Cosine Similarity"),
     )
@@ -170,6 +173,7 @@ def plot_cosine_heatmap(sim_df: pd.DataFrame, id_col: str, title: str = None, he
     fig.update_layout(
         title=title or f"Cosine Similarity antar {id_col}",
         height=height,
+        width=height,  # Added width=height to ensure square shape
         template="simple_white",
         xaxis_tickangle=-45,
         xaxis_side='top',
@@ -178,6 +182,37 @@ def plot_cosine_heatmap(sim_df: pd.DataFrame, id_col: str, title: str = None, he
 
     fig.update_traces(
         hovertemplate="%{y} vs %{x}<br>Cosine = %{z:.3f}<extra></extra>"
+    )
+
+    return fig
+
+def plot_cosine_dendogram(sim_df: pd.DataFrame, id_col: str, title: str = None, height: int = 700):
+    """
+    Visualisasikan matriks cosine similarity sebagai dendrogram.
+    """
+
+
+    # Konversi similarity menjadi distance
+    distance_matrix = 1 - sim_df.values
+
+    # Lakukan hierarchical clustering
+    linked = linkage(distance_matrix, method='ward')
+
+    # Buat dendrogram
+    fig = ff.create_dendrogram(
+        sim_df.values,
+        orientation='left',  # Changed to 'left' to put labels on the y-axis
+        labels=sim_df.index.tolist(),
+        linkagefun=lambda x: linked
+    )
+
+    # Rotate the figure 90 degrees
+    fig.update_layout(
+        title=title or f"Dendrogram Cosine Similarity antar {id_col}",
+        height=height,
+        template="simple_white",
+        margin=dict(l=60, r=20, t=60, b=100),
+        xaxis_tickangle=0  # Make labels horizontal
     )
 
     return fig
