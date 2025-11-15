@@ -275,89 +275,75 @@ def prepare_long_format(df, id_col, desc_col):
 
 TRAIT_COLS = ['agree', 'consc', 'extra', 'neuro', 'openn']
 
-def compute_G(values):
+def compute_G(values: np.ndarray) -> float:
     """
-    Calculate G-index for a group of values.
-    G-index is defined as the highest number g of values that have at least g citations each.
+    Hitung Gini coefficient (G-index) dari array values.
+    G = 0 berarti distribusi sempurna merata, G = 1 berarti sangat tidak merata.
     """
     if len(values) == 0:
-        return 0
-    
-    sorted_vals = sorted(values, reverse=True)
-    g = 0
-    for i, val in enumerate(sorted_vals, start=1):
-        if val >= i:
-            g = i
-        else:
-            break
-    return g
+        return 0.0
+    values = np.sort(values)
+    n = len(values)
+    index = np.arange(1, n + 1)
+    return (2 * np.sum(index * values)) / (n * np.sum(values)) - (n + 1) / n
 
-def compute_G_scores(dfCEO: pd.DataFrame, trait_columns: List[str] | None = None) -> pd.Series:
+def compute_G_from_means(df_mean: pd.DataFrame, id_col: str) -> pd.Series:
     """
-    Hitung G(trait) sebagai jumlah seluruh selisih absolut pasangan |Xi - Xj|
-    untuk tiap kolom trait yang diberikan.
-
-    Disesuaikan dengan konvensi modul:
-    - default trait_columns menggunakan TRAIT_COLS (jika tersedia di dfCEO)
-    - mengembalikan pd.Series dengan name "G(Trait)"
+    Hitung G-index untuk setiap trait personality berdasarkan rata-rata per kelompok (SIC_1digit atau SIC_2digit).
+    G-index dihitung dari vektor rata-rata trait antar kelompok.
+    Mengembalikan pd.Series: index = trait, value = G-index.
     """
-    if trait_columns is None:
-        # gunakan TRAIT_COLS yang didefinisikan di modul, tetapi hanya yang ada di dfCEO
-        trait_columns = [c for c in TRAIT_COLS if c in dfCEO.columns]
-
     G_values = {}
-
-    for col in trait_columns:
-        values = dfCEO[col].dropna().astype(float).values
-        if values.size <= 1:
-            G_values[col] = 0.0
+    for trait in TRAIT_COLS:
+        if trait not in df_mean.columns:
             continue
+        values = df_mean[trait].dropna().astype(float).values
+        G_values[trait] = compute_G(values)
+    return pd.Series(G_values, name=f"G({id_col})")
 
-        total = 0.0
-        for i, j in combinations(range(len(values)), 2):
-            total += abs(values[i] - values[j])
-
-        G_values[col] = float(total)
-
-    return pd.Series(G_values, name="G(Trait)")
-
-def compute_G_per_trait(df, group_col):
+def compute_G_scores(df_mean: pd.DataFrame, id_col: str) -> pd.DataFrame:
     """
-    Hitung G untuk setiap trait personality berdasarkan kolom grup (misal SIC_1digit atau SIC_2digit).
+    Hitung G-index untuk setiap trait personality sebagai total selisih absolut
+    dari rata-rata antar kelompok SIC.
+    
+    Parameters:
+    -----------
+    df_mean : pd.DataFrame
+        DataFrame berisi rata-rata personality traits per kelompok
+    id_col : str
+        Nama kolom untuk pengelompokan ('SIC_1digit' atau 'SIC_2digit')
+    
+    Returns:
+    --------
+    pd.DataFrame
+        DataFrame dengan kolom: 'Personality Trait' dan 'G(Trait)'
     """
-    results = []
+    G_values = {}
+    
+    for trait in TRAIT_COLS:
+        if trait not in df_mean.columns:
+            continue
+        
+        # Ambil nilai rata-rata trait untuk semua kelompok
+        values = df_mean[trait].dropna().astype(float).values
+        
+        # Hitung total selisih absolut antar semua pasangan kelompok
+        total_diff = 0.0
+        for i in range(len(values)):
+            for j in range(i + 1, len(values)):
+                total_diff += abs(values[i] - values[j])
+        
+        G_values[trait] = total_diff
+    
+    # Convert to DataFrame format untuk plotting
+    df_G = pd.DataFrame({
+        'Personality Trait': list(G_values.keys()),
+        'G(Trait)': list(G_values.values())
+    })
+    
+    print(df_G)
 
-    grouped = df.groupby(group_col)
-
-    for group_id, group_data in grouped:
-        for trait in TRAIT_COLS:
-            G_value = compute_G(group_data[trait].values)
-            results.append({
-                group_col: group_id,
-                "Personality Trait": trait,
-                "G(Trait)": G_value
-            })
-
-    return pd.DataFrame(results)
-
-# def compute_G_per_trait(df, group_col):
-#     """
-#     Hitung G untuk setiap trait personality berdasarkan kolom grup (misal SIC_1digit atau SIC_2digit).
-#     """
-#     results = []
-
-#     grouped = df.groupby(group_col)
-
-#     for group_id, group_data in grouped:
-#         for trait in TRAIT_COLS:
-#             G_value = compute_G(group_data[trait].values)
-#             results.append({
-#                 group_col: group_id,
-#                 "Personality Trait": trait,
-#                 "G(Trait)": G_value
-#             })
-
-#     return pd.DataFrame(results)
+    return df_G
 
 def compute_cosine_similarity(df_mean: pd.DataFrame, id_col: str) -> pd.DataFrame:
     """

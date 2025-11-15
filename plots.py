@@ -26,6 +26,82 @@ def style_common(fig: go.Figure, y_range=(1,7), height=600):
     )
     return fig
 
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+
+def pie_chart_styled(dataframe: pd.DataFrame, column: str = 'SIC_1digit') -> go.Figure:
+    """
+    Buat donut chart berdasarkan kolom deskripsi (misal SIC_1digit),
+    tanpa legend manual, dengan efek pop dan tooltip interaktif.
+    """
+    # --- siapkan data ---
+    counts = dataframe[column].value_counts().reset_index()
+    counts.columns = [column, 'count']
+    counts = counts.sort_values('count', ascending=False).reset_index(drop=True)
+    counts['percent'] = counts['count'] / counts['count'].sum() * 100
+
+    # --- warna pastel lembut ---
+    colors = px.colors.qualitative.Pastel
+    if len(colors) < len(counts):
+        from itertools import cycle, islice
+        colors = list(islice(cycle(colors), len(counts)))
+
+    # --- buat donut chart ---
+    fig = go.Figure(
+        go.Pie(
+            labels=counts[column],
+            values=counts['count'],
+            hole=0.45,
+            marker=dict(colors=colors, line=dict(color='white', width=2)),
+            textinfo='label+percent',
+            textposition='outside',
+            pull=[0.05]*len(counts),  # efek pop keluar
+            hovertemplate=(
+                "<b>%{label}</b><br>"
+                "Jumlah: %{value}<br>"
+                "Persentase: %{percent}"
+            ),
+            insidetextorientation='radial'
+        )
+    )
+
+    # --- layout tampilan ---
+    fig.update_layout(
+        showlegend=True,
+        legend=dict(
+            orientation="v",
+            yanchor="middle",
+            y=0.5,
+            xanchor="left",
+            x=1.05,
+            font=dict(size=12)
+        ),
+        margin=dict(l=40, r=80, t=40, b=40),
+        height=420,
+        paper_bgcolor="white",
+        hoverlabel=dict(bgcolor="white", font_size=13, font_family="Arial"),
+    )
+
+    return fig
+
+def pie_chart(dataframe: pd.DataFrame) -> go.Figure:
+    """
+    Buat pie chart dari dataframe berdasarkan kolom tertentu.
+    """
+    column = 'SIC_1digit'
+    counts = dataframe[column].value_counts().reset_index()
+    counts.columns = [column, 'count']
+
+    fig = px.pie(
+        counts,
+        names=column,
+        values='count',
+        hole=0.4
+    )
+    fig.update_traces(textposition='inside', textinfo='percent+label')
+    fig.update_layout(showlegend=True)
+    return fig
 
 def mean_line_chart(rata_df, id_col: str, desc_col: str, selected_ids: List[str] = None) -> go.Figure:
     """
@@ -120,7 +196,21 @@ def errorbar_plot_from_means(df_long, title_suffix="", height=500):
 
 import plotly.express as px
 
-def plot_G_bar(df_G, group_col):
+def plot_G_bar(df_G, title_suffix=""):
+    """
+    Create a bar chart for G(Trait) scores.
+    
+    Parameters:
+    -----------
+    df_G : pd.DataFrame
+        DataFrame with columns 'Personality Trait' and 'G(Trait)'
+    title_suffix : str
+        Additional text for the title
+    
+    Returns:
+    --------
+    plotly.graph_objects.Figure
+    """
     label_map = {
         'agree': 'Agreeableness',
         'consc': 'Conscientiousness',
@@ -128,31 +218,35 @@ def plot_G_bar(df_G, group_col):
         'neuro': 'Neuroticism',
         'openn': 'Openness'
     }
-    df_G['Dimensi_Kepribadian'] = df_G['Dimensi_Kepribadian'].map(label_map)
+    
+    # Map trait names to full labels
+    df_plot = df_G.copy()
+    df_plot['Personality Trait'] = df_plot['Personality Trait'].map(label_map).fillna(df_plot['Personality Trait'])
+    
     fig = px.bar(
-        df_G,
-        x=group_col,
-        y='G_Value',
-        color='Dimensi_Kepribadian',
-        barmode='group',
-        title=f"G(Personality) berdasarkan {group_col.upper()}",
-        labels={'G_Value': 'G (Total Absolute Difference)'},
-        template='simple_white'
+        df_plot,
+        x='Personality Trait',
+        y='G(Trait)',
+        color='Personality Trait',
+        title=f"G-Index Distribution by Personality Trait {title_suffix}",
+        labels={'G(Trait)': 'G-Index (Gini Coefficient)'},
+        template='simple_white',
+        text_auto='.3f'
     )
-    return fig
-
-def plot_G_bar(df, group_col):
-    fig = px.bar(
-        df,
-        x="Personality Trait",
-        y="G(Trait)",
-        color="Personality Trait",
-        facet_col=group_col,
-        facet_col_wrap=4,
-        title=f"G(Trait) berdasarkan {group_col}",
-        text_auto=".2f"
+    
+    fig.update_layout(
+        showlegend=False,
+        xaxis_title="Personality Trait",
+        yaxis_title="G-Index",
+        height=500,
+        margin=dict(l=40, r=40, t=60, b=40)
     )
-    fig.update_layout(height=600, showlegend=False)
+    
+    fig.update_traces(
+        textposition='outside',
+        hovertemplate="<b>%{x}</b><br>G-Index: %{y:.4f}<extra></extra>"
+    )
+    
     return fig
 
 import plotly.express as px
