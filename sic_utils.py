@@ -169,7 +169,7 @@ def get_mean_sic1_v2(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> None:
 def get_mean_sic2(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> pd.DataFrame:
     """
     Hitung rata-rata skor personality per SIC_2digit.
-    Kembalikan dataframe: SIC_2digit + TRAIT_COLS + SIC_1digit + Description_2 (jika ada).
+    Kembalikan dataframe: SIC_2digit + TRAIT_COLS + SIC_1digit + Description_2 (jika ada) + Description_1 (dari dfSIC).
     """
     dfCEO = dfCEO.copy()
     dfSIC = dfSIC.copy()
@@ -188,6 +188,11 @@ def get_mean_sic2(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> pd.DataFrame:
     if 'Description_2' in dfSIC.columns:
         desc = dfSIC[['SIC_2digit', 'Description_2']].drop_duplicates()
         extra = extra.merge(desc, on='SIC_2digit', how='left')
+
+    # Tambahkan Description_1 dari dfSIC berdasarkan SIC_1digit
+    if 'Description_1' in dfSIC.columns:
+        desc1 = dfSIC[['SIC_1digit', 'Description_1']].drop_duplicates()
+        extra = extra.merge(desc1, on='SIC_1digit', how='left')
 
     # Gabungkan tambahan kolom dengan hasil rata-rata
     rata2 = rata2.merge(extra, on='SIC_2digit', how='left')
@@ -275,32 +280,6 @@ def prepare_long_format(df, id_col, desc_col):
 
 TRAIT_COLS = ['agree', 'consc', 'extra', 'neuro', 'openn']
 
-def compute_G(values: np.ndarray) -> float:
-    """
-    Hitung Gini coefficient (G-index) dari array values.
-    G = 0 berarti distribusi sempurna merata, G = 1 berarti sangat tidak merata.
-    """
-    if len(values) == 0:
-        return 0.0
-    values = np.sort(values)
-    n = len(values)
-    index = np.arange(1, n + 1)
-    return (2 * np.sum(index * values)) / (n * np.sum(values)) - (n + 1) / n
-
-def compute_G_from_means(df_mean: pd.DataFrame, id_col: str) -> pd.Series:
-    """
-    Hitung G-index untuk setiap trait personality berdasarkan rata-rata per kelompok (SIC_1digit atau SIC_2digit).
-    G-index dihitung dari vektor rata-rata trait antar kelompok.
-    Mengembalikan pd.Series: index = trait, value = G-index.
-    """
-    G_values = {}
-    for trait in TRAIT_COLS:
-        if trait not in df_mean.columns:
-            continue
-        values = df_mean[trait].dropna().astype(float).values
-        G_values[trait] = compute_G(values)
-    return pd.Series(G_values, name=f"G({id_col})")
-
 def compute_G_scores(df_mean: pd.DataFrame, id_col: str) -> pd.DataFrame:
     """
     Hitung G-index untuk setiap trait personality sebagai total selisih absolut
@@ -340,10 +319,100 @@ def compute_G_scores(df_mean: pd.DataFrame, id_col: str) -> pd.DataFrame:
         'Personality Trait': list(G_values.keys()),
         'G(Trait)': list(G_values.values())
     })
-    
-    print(df_G)
 
     return df_G
+import numpy as np
+import pandas as pd
+
+TRAIT_COLS = ["agree", "consc", "extra", "neuro", "openn"]
+
+import numpy as np
+import pandas as pd
+
+import numpy as np
+import pandas as pd
+
+def compute_G_scores_v2(
+    df_mean: pd.DataFrame,
+    sic2_col: str = "SIC_2digit",
+    sic1_col: str = "SIC_1digit",
+    desc_col: str = "Description_2",
+    trait_cols: list = None,
+    na_action: str = "raise"  # "raise", "drop", atau "fill0"
+) -> pd.DataFrame:
+    """
+    Hitung G(trait) per SIC_1digit dari rata-rata trait per SIC_2digit.
+
+    Matematika:
+      Untuk tiap group (SIC_1digit) dengan k unique SIC_2digit dan nilai trait x_1..x_k:
+        G_sum = sum_{1 <= i < j <= k} |x_i - x_j|
+      Jika k <= 1, G = 0.
+
+    Output hanya mencakup:
+      SIC_1digit, Description_1, dan <trait_cols>.
+    """
+    if trait_cols is None:
+        trait_cols = ["agree", "consc", "extra", "neuro", "openn"]
+
+    # cek kolom
+    required = [sic2_col, sic1_col] + trait_cols
+    missing = [c for c in required if c not in df_mean.columns]
+    if missing:
+        raise ValueError(f"Missing columns in df_mean: {missing}")
+
+    df = df_mean.copy()
+
+    # normalize keys
+    df[sic1_col] = df[sic1_col].astype(str).str.strip()
+    df[sic2_col] = df[sic2_col].astype(str).str.strip()
+    if desc_col in df.columns:
+        df[desc_col] = df[desc_col].astype(str).str.strip()
+
+    # convert trait columns to numeric
+    for t in trait_cols:
+        df[t] = pd.to_numeric(df[t].astype(str).str.replace(",", "."), errors="coerce")
+
+    results = []
+    for sic1, grp in df.groupby(sic1_col, sort=True):
+        # representative description
+        desc_val = grp[desc_col].iloc[0] if desc_col in grp.columns else ""
+
+        # drop duplicate SIC_2digit
+        sub = grp.drop_duplicates(subset=[sic2_col]).reset_index(drop=True)
+        k = sub.shape[0]
+
+        # NaN handling
+        if sub[trait_cols].isna().any().any():
+            if na_action == "raise":
+                raise ValueError(f"NaN found in traits for SIC_1digit={sic1}")
+            elif na_action == "drop":
+                sub = sub.dropna(subset=trait_cols).reset_index(drop=True)
+                k = sub.shape[0]
+            elif na_action == "fill0":
+                sub[trait_cols] = sub[trait_cols].fillna(0)
+            else:
+                raise ValueError("na_action must be 'raise','drop','fill0'")
+
+        row = {
+            "SIC_1digit": sic1,
+            "Description_1": desc_val
+        }
+
+        for t in trait_cols:
+            vals = sub[t].astype(float).to_numpy()
+
+            if len(vals) <= 1:
+                row[t] = 0.0
+            else:
+                diff = np.abs(vals[:, None] - vals[None, :])
+                G_sum = float(np.triu(diff, k=1).sum())
+                row[t] = G_sum
+
+        results.append(row)
+
+    res_df = pd.DataFrame(results).sort_values("SIC_1digit").reset_index(drop=True)
+    return res_df
+
 
 def compute_cosine_similarity(df_mean: pd.DataFrame, id_col: str) -> pd.DataFrame:
     """

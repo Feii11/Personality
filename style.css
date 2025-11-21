@@ -1,0 +1,72 @@
+/* Dashboard Global Styles */
+.main-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 2rem;
+    border-radius: 10px;
+    margin-bottom: 2rem;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+.main-header h1 {
+    color: white;
+    margin: 0;
+    font-size: 2.5rem;
+}
+.main-header p {
+    color: rgba(255,255,255,0.9);
+    margin: 0.5rem 0 0 0;
+    font-size: 1.1rem;
+}
+.section-header {
+    background: linear-gradient(90deg, #f093fb 0%, #f5576c 100%);
+    padding: 1rem 1.5rem;
+    border-radius: 8px;
+    margin: 2rem 0 1rem 0;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.section-header h2 {
+    color: white;
+    margin: 0;
+    font-size: 1.8rem;
+}
+.filter-box {
+    background: #f8f9fa;
+    padding: 1.5rem;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    position: sticky;
+    top: 20px;
+}
+.metric-card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    border-top: 3px solid #667eea;
+}
+.info-box {
+    background: #e3f2fd;
+    padding: 1rem;
+    border-radius: 6px;
+    border-left: 3px solid #2196f3;
+    margin: 1rem 0;
+}
+.divider {
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #667eea, transparent);
+    margin: 2rem 0;
+}
+/* Radio buttons row layout */
+.stRadio > div { flex-direction: row; gap: 1rem; }
+/* Tabs styling */
+.stTabs [data-baseweb="tab-list"] { gap: 2rem; }
+.stTabs [data-baseweb="tab"] {
+    height: 50px;
+    background-color: #f0f2f6;
+    border-radius: 8px 8px 0 0;
+    padding: 10px 20px;
+}
+.stTabs [aria-selected="true"] {
+    background-color: #667eea;
+    color: white;
+}

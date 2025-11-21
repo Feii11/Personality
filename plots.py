@@ -26,6 +26,96 @@ def style_common(fig: go.Figure, y_range=(1,7), height=600):
     )
     return fig
 
+def plot_radar_chart(rata_df: pd.DataFrame, id_col: str, selected_id: str, desc_col: str = None) -> go.Figure:
+    """
+    Create a radar chart for a single SIC group showing personality trait scores.
+    
+    Parameters:
+    -----------
+    rata_df : pd.DataFrame
+        DataFrame with mean scores per group
+    id_col : str
+        Column name for group ID ('SIC_1digit' or 'SIC_2digit')
+    selected_id : str
+        The specific group ID to visualize
+    desc_col : str, optional
+        Column name for description
+    
+    Returns:
+    --------
+    plotly.graph_objects.Figure
+    """
+    # Filter for selected group
+    row = rata_df[rata_df[id_col].astype(str) == str(selected_id)]
+    
+    if row.empty:
+        # Return empty figure if no data
+        fig = go.Figure()
+        fig.add_annotation(
+            text="No data available",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16)
+        )
+        return fig
+    
+    row = row.iloc[0]
+    
+    # Get trait values
+    values = [row[trait] for trait in TRAIT_COLS]
+    labels = [TRAIT_LABELS.get(trait, trait) for trait in TRAIT_COLS]
+    
+    # Close the radar chart by repeating first value
+    values_closed = values + [values[0]]
+    labels_closed = labels + [labels[0]]
+    
+    # Get description if available
+    desc = row[desc_col] if desc_col and desc_col in rata_df.columns else ""
+    title_text = f"{id_col}: {selected_id}"
+    if desc:
+        title_text += f" - {desc}"
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatterpolar(
+        r=values_closed,
+        theta=labels_closed,
+        fill='toself',
+        name=selected_id,
+        line=dict(color='rgb(102, 126, 234)', width=2),
+        fillcolor='rgba(102, 126, 234, 0.3)',
+        hovertemplate="<b>%{theta}</b><br>Score: %{r:.2f}<extra></extra>"
+    ))
+    
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[1, 7],
+                tickmode='linear',
+                tick0=1,
+                dtick=1,
+                showline=True,
+                gridcolor='lightgray'
+            ),
+            angularaxis=dict(
+                gridcolor='lightgray'
+            )
+        ),
+        showlegend=False,
+        title=dict(
+            text=title_text,
+            x=0.5,
+            xanchor='center',
+            font=dict(size=14)
+        ),
+        height=500,
+        template="simple_white",
+        margin=dict(l=60, r=60, t=80, b=60)
+    )
+    
+    return fig
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -228,7 +318,7 @@ def plot_G_bar(df_G, title_suffix=""):
         x='Personality Trait',
         y='G(Trait)',
         color='Personality Trait',
-        title=f"G-Index Distribution by Personality Trait {title_suffix}",
+        # title=f"G-Index Distribution by Personality Trait {title_suffix}",
         labels={'G(Trait)': 'G-Index (Gini Coefficient)'},
         template='simple_white',
         text_auto='.3f'
@@ -265,9 +355,8 @@ def plot_cosine_heatmap(sim_df: pd.DataFrame, id_col: str, title: str = None, he
     )
 
     fig.update_layout(
-        title=title or f"Cosine Similarity antar {id_col}",
         height=height,
-        width=height,  # Added width=height to ensure square shape
+        width=height,
         template="simple_white",
         xaxis_tickangle=-45,
         xaxis_side='top',
@@ -309,4 +398,50 @@ def plot_cosine_dendogram(sim_df: pd.DataFrame, id_col: str, title: str = None, 
         xaxis_tickangle=0  # Make labels horizontal
     )
 
+    return fig
+
+def plot_G_per_group_v2(df_Gv2: pd.DataFrame, id_col: str = 'SIC_1digit') -> go.Figure:
+    """
+    Plot G_i(trait) per group (output of compute_G_scores_v2).
+
+    Parameters
+    ----------
+    df_Gv2 : DataFrame
+        Wide DataFrame with first column = id_col and remaining columns = traits.
+    id_col : str
+        Group identifier column name.
+
+    Returns
+    -------
+    plotly.graph_objects.Figure
+        Grouped bar chart: x = group, y = G_i(trait), color = trait.
+    """
+    if id_col not in df_Gv2.columns:
+        raise ValueError(f"Kolom {id_col} tidak ditemukan pada df_Gv2.")
+
+    trait_cols = [c for c in df_Gv2.columns if c != id_col]
+    # Melt to long format
+    df_long = df_Gv2.melt(id_vars=[id_col], value_vars=trait_cols, var_name='Trait', value_name='G_i')
+    df_long['Trait'] = df_long['Trait'].map(TRAIT_LABELS).fillna(df_long['Trait'])
+
+    fig = px.bar(
+        df_long,
+        x=id_col,
+        y='G_i',
+        color='Trait',
+        barmode='group',
+        title=f"G_i(Trait) per {id_col}",
+        labels={id_col: id_col, 'G_i': 'G_i(Trait)'},
+        text_auto='.2f',
+        template='simple_white'
+    )
+    fig.update_layout(
+        height=600,
+        margin=dict(l=40, r=40, t=60, b=40),
+        legend_title="Trait"
+    )
+    fig.update_traces(
+        hovertemplate="<b>%{x}</b><br>Trait: %{legendgroup}<br>G_i: %{y:.4f}<extra></extra>",
+        textposition='outside'
+    )
     return fig
