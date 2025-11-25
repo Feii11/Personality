@@ -5,6 +5,7 @@ from itertools import combinations
 from typing import List
 import os
 from pathlib import Path
+from scipy.stats import f_oneway
 
 TRAIT_COLS = ['agree', 'consc', 'extra', 'neuro', 'openn']
 
@@ -520,3 +521,66 @@ def compute_pearson_similarity(df_mean: pd.DataFrame, id_col: str) -> pd.DataFra
     pearson_matrix = df.T.corr(method='pearson')
     
     return pearson_matrix
+
+def compute_anova(df: pd.DataFrame, group_col: str, trait_cols: list = TRAIT_COLS) -> pd.DataFrame:
+    """
+    One-way ANOVA per trait across groups defined by group_col.
+    Returns DataFrame with columns: Trait, F, p
+    """
+    if group_col not in df.columns:
+        raise ValueError(f"Group column '{group_col}' not found in DataFrame")
+
+    results = []
+    df = df.copy()
+    df[group_col] = df[group_col].astype(str)
+
+    for trait in trait_cols:
+        if trait not in df.columns:
+            results.append({"Trait": trait, "F": float("nan"), "p": float("nan")})
+            continue
+
+        groups = []
+        for _, grp in df.groupby(group_col):
+            vals = pd.to_numeric(grp[trait], errors="coerce").dropna().values
+            if len(vals) > 0:
+                groups.append(vals)
+
+        # Need at least two groups with data to run ANOVA
+        if len(groups) < 2:
+            results.append({"Trait": trait, "F": float("nan"), "p": float("nan")})
+            continue
+
+        try:
+            stat, pval = f_oneway(*groups)
+        except Exception:
+            stat, pval = float("nan"), float("nan")
+
+        results.append({"Trait": trait, "F": float(stat), "p": float(pval)})
+
+    res = pd.DataFrame(results).sort_values("p").reset_index(drop=True)
+    return res
+
+# Tukey HSD post-hoc (optional; requires statsmodels)
+def compute_tukey(df: pd.DataFrame, group_col: str, trait: str):
+    """
+    Run Tukey HSD for a single trait across groups. Returns pandas DataFrame of results.
+    If statsmodels is missing, raises informative ImportError.
+    """
+    try:
+        from statsmodels.stats.multicomp import pairwise_tukeyhsd
+    except Exception as e:
+        raise ImportError("statsmodels is required for Tukey HSD (pip install statsmodels)") from e
+
+    if group_col not in df.columns:
+        raise ValueError(f"Group column '{group_col}' not found")
+
+    if trait not in df.columns:
+        raise ValueError(f"Trait '{trait}' not found")
+
+    long = df[[group_col, trait]].copy().dropna()
+    if long.empty:
+        raise ValueError("No data available for Tukey HSD")
+
+    tuk = pairwise_tukeyhsd(endog=long[trait], groups=long[group_col].astype(str), alpha=0.05)
+    tuk_df = pd.DataFrame(data=tuk.summary().data[1:], columns=tuk.summary().data[0])
+    return tuk_df

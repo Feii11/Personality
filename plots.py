@@ -5,6 +5,8 @@ import pandas as pd
 from scipy.cluster.hierarchy import linkage, dendrogram
 import numpy as np
 import plotly.figure_factory as ff
+import math
+from typing import Optional
 
 TRAIT_COLS = ['agree', 'consc', 'extra', 'neuro', 'openn']
 TRAIT_LABELS = {
@@ -391,7 +393,6 @@ def plot_cosine_dendogram(sim_df: pd.DataFrame, id_col: str, title: str = None, 
 
     # Rotate the figure 90 degrees
     fig.update_layout(
-        title=title or f"Dendrogram Cosine Similarity antar {id_col}",
         height=height,
         template="simple_white",
         margin=dict(l=60, r=20, t=60, b=100),
@@ -444,4 +445,61 @@ def plot_G_per_group_v2(df_Gv2: pd.DataFrame, id_col: str = 'SIC_1digit') -> go.
         hovertemplate="<b>%{x}</b><br>Trait: %{legendgroup}<br>G_i: %{y:.4f}<extra></extra>",
         textposition='outside'
     )
+    return fig
+
+def plot_anova_bar(anova_df: pd.DataFrame, p_thresh: float = 0.05) -> go.Figure:
+    """
+    Bar chart of F-statistics per trait with significance coloring based on p_thresh.
+    Expects anova_df with columns: 'Trait', 'F', 'p'
+    """
+    df = anova_df.copy()
+    df['-log10(p)'] = df['p'].apply(lambda x: -math.log10(x) if pd.notna(x) and x > 0 else float("nan"))
+    df['sig'] = df['p'] < p_thresh
+
+    colors = ['#667eea', '#F56565']  # sig / non-sig palette (primary + alert)
+    df['color'] = df['sig'].map({True: colors[0], False: colors[1]})
+
+    fig = px.bar(
+        df.sort_values('F', ascending=False),
+        x='Trait',
+        y='F',
+        color='sig',
+        color_discrete_map={True: colors[0], False: colors[1]},
+        labels={'F': 'F-statistic', 'Trait': 'Trait'},
+        height=380,
+        title="ANOVA: F-statistic per Trait"
+    )
+    # add p-value as hover
+    fig.update_traces(hovertemplate="<b>%{x}</b><br>F = %{y:.3f}<br>p = %{customdata[0]:.4g}<extra></extra>",
+                      customdata=df[['p']].values)
+    fig.update_layout(showlegend=False, margin=dict(l=20, r=20, t=40, b=20), template="simple_white")
+    return fig
+
+def plot_anova_boxplots(df: pd.DataFrame, group_col: str, traits: list = TRAIT_COLS, facet_col_wrap: int = 3) -> go.Figure:
+    """
+    Faceted boxplots for all traits grouped by group_col.
+    Returns a Plotly Figure with facets (small multiples).
+    """
+    df_long = df[[group_col] + traits].melt(id_vars=[group_col], value_vars=traits, var_name='Trait', value_name='Score')
+    # map trait labels if available
+    try:
+        df_long['Trait_Label'] = df_long['Trait'].map(TRAIT_LABELS)
+    except Exception:
+        df_long['Trait_Label'] = df_long['Trait']
+
+    fig = px.box(
+        df_long,
+        x=group_col,
+        y='Score',
+        color=group_col,
+        facet_col='Trait_Label',
+        facet_col_wrap=facet_col_wrap,
+        points='all',
+        height=520,
+        color_discrete_sequence=px.colors.qualitative.Plotly
+    )
+    fig.update_layout(showlegend=False, margin=dict(l=20, r=20, t=40, b=20), template="simple_white")
+    # tighten facet axes
+    fig.for_each_xaxis(lambda a: a.update(title=''))
+    fig.for_each_yaxis(lambda a: a.update(title='Score', range=[1,7]))
     return fig
