@@ -322,16 +322,51 @@ def compute_G_scores(df_mean: pd.DataFrame, id_col: str) -> pd.DataFrame:
     })
 
     return df_G
-import numpy as np
-import pandas as pd
 
-TRAIT_COLS = ["agree", "consc", "extra", "neuro", "openn"]
+def compute_G_scores_pairs(df_mean: pd.DataFrame, id_col: str) -> pd.DataFrame:
+    """
+    Hitung G-index untuk kombinasi 2 personality traits.
+    Untuk tiap pasangan trait (t1,t2) hitung:
+      G_pair = sum_{i<j} EuclideanDist( (x_i_t1, x_i_t2), (x_j_t1, x_j_t2) )
+    dimana i,j adalah baris (kelompok) dalam df_mean yang memiliki nilai kedua trait.
+    Returns DataFrame dengan kolom: 'Personality Pair' dan 'G(Pair)'.
+    """
+    if id_col not in df_mean.columns:
+        raise ValueError(f"Kolom '{id_col}' tidak ditemukan di DataFrame")
 
-import numpy as np
-import pandas as pd
+    missing_traits = [t for t in TRAIT_COLS if t not in df_mean.columns]
+    if missing_traits:
+        raise ValueError(f"Trait columns missing: {missing_traits}")
 
-import numpy as np
-import pandas as pd
+    label_map = {
+        'agree': 'Agreeableness',
+        'consc': 'Conscientiousness',
+        'extra': 'Extraversion',
+        'neuro': 'Neuroticism',
+        'openn': 'Openness'
+    }
+
+    results = []
+    for t1, t2 in combinations(TRAIT_COLS, 2):
+        sub = df_mean[[id_col, t1, t2]].copy()
+        # normalisasi angka (toleransi koma) dan konversi ke numeric
+        sub[t1] = pd.to_numeric(sub[t1].astype(str).str.replace(",", "."), errors="coerce")
+        sub[t2] = pd.to_numeric(sub[t2].astype(str).str.replace(",", "."), errors="coerce")
+        sub = sub.dropna(subset=[t1, t2]).reset_index(drop=True)
+
+        vals = sub[[t1, t2]].to_numpy(dtype=float)
+        if vals.shape[0] <= 1:
+            G_val = 0.0
+        else:
+            diff = vals[:, None, :] - vals[None, :, :]  # shape (n, n, 2)
+            dist = np.linalg.norm(diff, axis=2)        # pairwise euclidean distances
+            G_val = float(np.triu(dist, k=1).sum())
+
+        pair_label = f"{label_map.get(t1, t1)} & {label_map.get(t2, t2)}"
+        results.append({"Personality Pair": pair_label, "G(Pair)": G_val})
+
+    res_df = pd.DataFrame(results).sort_values("Personality Pair").reset_index(drop=True)
+    return res_df
 
 def compute_G_scores_v2(
     df_mean: pd.DataFrame,
@@ -521,66 +556,3 @@ def compute_pearson_similarity(df_mean: pd.DataFrame, id_col: str) -> pd.DataFra
     pearson_matrix = df.T.corr(method='pearson')
     
     return pearson_matrix
-
-def compute_anova(df: pd.DataFrame, group_col: str, trait_cols: list = TRAIT_COLS) -> pd.DataFrame:
-    """
-    One-way ANOVA per trait across groups defined by group_col.
-    Returns DataFrame with columns: Trait, F, p
-    """
-    if group_col not in df.columns:
-        raise ValueError(f"Group column '{group_col}' not found in DataFrame")
-
-    results = []
-    df = df.copy()
-    df[group_col] = df[group_col].astype(str)
-
-    for trait in trait_cols:
-        if trait not in df.columns:
-            results.append({"Trait": trait, "F": float("nan"), "p": float("nan")})
-            continue
-
-        groups = []
-        for _, grp in df.groupby(group_col):
-            vals = pd.to_numeric(grp[trait], errors="coerce").dropna().values
-            if len(vals) > 0:
-                groups.append(vals)
-
-        # Need at least two groups with data to run ANOVA
-        if len(groups) < 2:
-            results.append({"Trait": trait, "F": float("nan"), "p": float("nan")})
-            continue
-
-        try:
-            stat, pval = f_oneway(*groups)
-        except Exception:
-            stat, pval = float("nan"), float("nan")
-
-        results.append({"Trait": trait, "F": float(stat), "p": float(pval)})
-
-    res = pd.DataFrame(results).sort_values("p").reset_index(drop=True)
-    return res
-
-# Tukey HSD post-hoc (optional; requires statsmodels)
-def compute_tukey(df: pd.DataFrame, group_col: str, trait: str):
-    """
-    Run Tukey HSD for a single trait across groups. Returns pandas DataFrame of results.
-    If statsmodels is missing, raises informative ImportError.
-    """
-    try:
-        from statsmodels.stats.multicomp import pairwise_tukeyhsd
-    except Exception as e:
-        raise ImportError("statsmodels is required for Tukey HSD (pip install statsmodels)") from e
-
-    if group_col not in df.columns:
-        raise ValueError(f"Group column '{group_col}' not found")
-
-    if trait not in df.columns:
-        raise ValueError(f"Trait '{trait}' not found")
-
-    long = df[[group_col, trait]].copy().dropna()
-    if long.empty:
-        raise ValueError("No data available for Tukey HSD")
-
-    tuk = pairwise_tukeyhsd(endog=long[trait], groups=long[group_col].astype(str), alpha=0.05)
-    tuk_df = pd.DataFrame(data=tuk.summary().data[1:], columns=tuk.summary().data[0])
-    return tuk_df

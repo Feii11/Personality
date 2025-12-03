@@ -7,6 +7,7 @@ import numpy as np
 import plotly.figure_factory as ff
 import math
 from typing import Optional
+from scipy.spatial.distance import squareform
 
 TRAIT_COLS = ['agree', 'consc', 'extra', 'neuro', 'openn']
 TRAIT_LABELS = {
@@ -431,7 +432,6 @@ def plot_G_per_group_v2(df_Gv2: pd.DataFrame, id_col: str = 'SIC_1digit') -> go.
         y='G_i',
         color='Trait',
         barmode='group',
-        title=f"G_i(Trait) per {id_col}",
         labels={id_col: id_col, 'G_i': 'G_i(Trait)'},
         text_auto='.2f',
         template='simple_white'
@@ -502,4 +502,86 @@ def plot_anova_boxplots(df: pd.DataFrame, group_col: str, traits: list = TRAIT_C
     # tighten facet axes
     fig.for_each_xaxis(lambda a: a.update(title=''))
     fig.for_each_yaxis(lambda a: a.update(title='Score', range=[1,7]))
+    return fig
+
+def plot_pearson_dendrogram(sim_df: pd.DataFrame, id_col: str = None, title: str = None, height: int = 700):
+    # defensive copy / numpy array
+    mat = sim_df.values.astype(float).copy()
+
+    # Convert correlation to distance
+    dist = 1.0 - mat
+
+    # Ensure symmetry and zero diagonal
+    dist = (dist + dist.T) / 2.0
+    np.fill_diagonal(dist, 0.0)
+
+    # Condensed distance vector required by linkage
+    condensed = squareform(dist, checks=True)
+
+    # Build hierarchical clustering linkage from condensed distances
+    linked = linkage(condensed, method='average')
+
+    # Create dendrogram using the precomputed linkage
+    fig = ff.create_dendrogram(
+        mat,  # data passed only so labels/order are preserved by the factory
+        orientation='left',
+        labels=sim_df.index.tolist(),
+        linkagefun=lambda x: linked
+    )
+
+    # Update layout to show distance scale that matches 1 - Pearson (max ≈ 2)
+    fig.update_layout(
+        height=height,
+        template="simple_white",
+        margin=dict(l=60, r=20, t=60, b=100),
+        xaxis_tickangle=0
+    )
+
+    return fig
+
+def plot_G_pairs_bar(df_pairs: pd.DataFrame, height: int = 720) -> go.Figure:
+    """
+    Horizontal bar chart for compute_G_scores_pairs output.
+    Expects df_pairs with columns: 'Personality Pair' and 'G(Pair)' columns.
+    Sorted so highest G appears at the top.
+    """
+    df = df_pairs.copy()
+    if 'Personality Pair' not in df.columns or 'G(Pair)' not in df.columns:
+        raise ValueError("df_pairs must contain 'Personality Pair' and 'G(Pair)' columns")
+
+    # sort so largest G appears first
+    df_sorted = df.sort_values('G(Pair)', ascending=False).reset_index(drop=True)
+
+    fig = px.bar(
+        df_sorted,
+        x='G(Pair)',
+        y='Personality Pair',
+        color='G(Pair)',
+        orientation='h',
+        color_continuous_scale='Blues',
+        text='G(Pair)',
+        height=height
+    )
+
+    fig.update_traces(
+        texttemplate='%{x:.3f}',
+        textposition='outside',
+        hovertemplate="<b>%{y}</b><br>G(Pair) = %{x:.4f}<extra></extra>"
+    )
+
+    fig.update_layout(
+        showlegend=False,
+        margin=dict(l=220, r=40, t=40, b=40),  # larger left margin for long category labels
+        template='simple_white',
+        xaxis_title="G(Pair)",
+        uniformtext_minsize=8,
+        uniformtext_mode='hide'
+    )
+
+    # enforce category order to match sorted df with highest value shown at the top
+    # Plotly renders categorical y-axis from bottom-to-top following the provided array,
+    # so reverse the sorted list to put largest at the top.
+    fig.update_yaxes(categoryorder='array', categoryarray=list(df_sorted['Personality Pair'][::-1]), automargin=True)
+    fig.update_xaxes(automargin=True)
+
     return fig
