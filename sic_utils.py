@@ -2,7 +2,7 @@
 import pandas as pd
 import numpy as np
 from itertools import combinations
-from typing import List
+from typing import List, Optional
 import os
 from pathlib import Path
 from scipy.stats import f_oneway
@@ -48,6 +48,15 @@ def prepare_data(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> tuple[pd.DataFrame
     else:
         raise ValueError("Kolom 'SIC_2digit' tidak ditemukan di dfSIC")
     
+    # drop rows where SIC_1digit is missing or blank (for both dfCEO and dfSIC)
+    if 'SIC_1digit' in dfCEO.columns:
+        non_na = dfCEO['SIC_1digit'].notna()
+        dfCEO.loc[non_na, 'SIC_1digit'] = dfCEO.loc[non_na, 'SIC_1digit'].astype(str).str.strip()
+        mask_ceo = non_na & (dfCEO['SIC_1digit'] != "")
+        dfCEO = dfCEO[mask_ceo].reset_index(drop=True)
+    else:
+        raise ValueError("dfCEO tidak memiliki kolom 'SIC_1digit' setelah pemetaan.")
+
     return dfCEO, dfSIC
 
 def prepare_data_v2(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> None:
@@ -374,18 +383,18 @@ def compute_G_scores_v2(
     sic1_col: str = "SIC_1digit",
     desc_col: str = "Description_2",
     trait_cols: list = None,
-    na_action: str = "raise"  # "raise", "drop", atau "fill0"
+    na_action: str = "raise",  # "raise", "drop", atau "fill0"
+    save: bool = True,
+    output_path: Optional[str] = None
 ) -> pd.DataFrame:
     """
     Hitung G(trait) per SIC_1digit dari rata-rata trait per SIC_2digit.
 
-    Matematika:
-      Untuk tiap group (SIC_1digit) dengan k unique SIC_2digit dan nilai trait x_1..x_k:
-        G_sum = sum_{1 <= i < j <= k} |x_i - x_j|
-      Jika k <= 1, G = 0.
+    Jika save=True maka hasil akan disimpan ke file Excel otomatis.
+    - output_path: jika diberikan, simpan ke path tersebut (.xlsx). Jika None, simpan ke
+      current working directory dengan nama 'G_scores_sic1_from_sic2.xlsx'.
 
-    Output hanya mencakup:
-      SIC_1digit, Description_1, dan <trait_cols>.
+    Kembalian: DataFrame hasil (SIC_1digit, Description_1, kolom trait, dan N_SIC2 = jumlah SIC_2digit yang dihitung).
     """
     if trait_cols is None:
         trait_cols = ["agree", "consc", "extra", "neuro", "openn"]
@@ -415,23 +424,25 @@ def compute_G_scores_v2(
 
         # drop duplicate SIC_2digit
         sub = grp.drop_duplicates(subset=[sic2_col]).reset_index(drop=True)
-        k = sub.shape[0]
 
-        # NaN handling
+        # NaN handling (update sub and count after handling)
         if sub[trait_cols].isna().any().any():
             if na_action == "raise":
                 raise ValueError(f"NaN found in traits for SIC_1digit={sic1}")
             elif na_action == "drop":
                 sub = sub.dropna(subset=trait_cols).reset_index(drop=True)
-                k = sub.shape[0]
             elif na_action == "fill0":
                 sub[trait_cols] = sub[trait_cols].fillna(0)
             else:
                 raise ValueError("na_action must be 'raise','drop','fill0'")
 
+        # number of SIC_2digit rows used in computation for this SIC_1digit
+        n_sic2 = int(sub.shape[0])
+
         row = {
-            "SIC_1digit": sic1,
-            "Description_1": desc_val
+            sic1_col: sic1,
+            "Description_1": desc_val,
+            "N_SIC2": n_sic2
         }
 
         for t in trait_cols:
@@ -446,9 +457,29 @@ def compute_G_scores_v2(
 
         results.append(row)
 
-    res_df = pd.DataFrame(results).sort_values("SIC_1digit").reset_index(drop=True)
-    return res_df
+    res_df = pd.DataFrame(results).sort_values(sic1_col).reset_index(drop=True)
 
+    # Auto-save if requested
+    if save:
+        try:
+            if output_path:
+                out_path = Path(output_path)
+            else:
+                # save to current working directory so file appears in "this folder"
+                out_dir = Path.cwd()
+                out_path = out_dir / "G_scores_sic1_from_sic2.xlsx"
+
+            # ensure parent exists
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # write to Excel
+            with pd.ExcelWriter(out_path, engine='openpyxl') as writer:
+                res_df.to_excel(writer, index=False, sheet_name='G_scores_SIC1')
+
+        except Exception as e:
+            raise IOError(f"Gagal menyimpan hasil G_scores_v2 ke '{out_path}': {e}")
+
+    return res_df
 
 def compute_cosine_similarity(df_mean: pd.DataFrame, id_col: str) -> pd.DataFrame:
     """

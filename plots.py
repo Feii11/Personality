@@ -29,25 +29,8 @@ def style_common(fig: go.Figure, y_range=(1,7), height=600):
     )
     return fig
 
+# Radar Chart - MEAN
 def plot_radar_chart(rata_df: pd.DataFrame, id_col: str, selected_id: str, desc_col: str = None) -> go.Figure:
-    """
-    Create a radar chart for a single SIC group showing personality trait scores.
-    
-    Parameters:
-    -----------
-    rata_df : pd.DataFrame
-        DataFrame with mean scores per group
-    id_col : str
-        Column name for group ID ('SIC_1digit' or 'SIC_2digit')
-    selected_id : str
-        The specific group ID to visualize
-    desc_col : str, optional
-        Column name for description
-    
-    Returns:
-    --------
-    plotly.graph_objects.Figure
-    """
     # Filter for selected group
     row = rata_df[rata_df[id_col].astype(str) == str(selected_id)]
     
@@ -119,15 +102,8 @@ def plot_radar_chart(rata_df: pd.DataFrame, id_col: str, selected_id: str, desc_
     
     return fig
 
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-
+# Pie Chart - Industry Distribution
 def pie_chart_styled(dataframe: pd.DataFrame, column: str = 'SIC_1digit') -> go.Figure:
-    """
-    Buat donut chart berdasarkan kolom deskripsi (misal SIC_1digit),
-    tanpa legend manual, dengan efek pop dan tooltip interaktif.
-    """
     # --- siapkan data ---
     counts = dataframe[column].value_counts().reset_index()
     counts.columns = [column, 'count']
@@ -178,31 +154,8 @@ def pie_chart_styled(dataframe: pd.DataFrame, column: str = 'SIC_1digit') -> go.
 
     return fig
 
-def pie_chart(dataframe: pd.DataFrame) -> go.Figure:
-    """
-    Buat pie chart dari dataframe berdasarkan kolom tertentu.
-    """
-    column = 'SIC_1digit'
-    counts = dataframe[column].value_counts().reset_index()
-    counts.columns = [column, 'count']
-
-    fig = px.pie(
-        counts,
-        names=column,
-        values='count',
-        hole=0.4
-    )
-    fig.update_traces(textposition='inside', textinfo='percent+label')
-    fig.update_layout(showlegend=True)
-    return fig
-
+# Line Chart - MEAN
 def mean_line_chart(rata_df, id_col: str, desc_col: str, selected_ids: List[str] = None) -> go.Figure:
-    """
-    Buat line chart dari hasil rata-rata.
-    - rata_df: dataframe dengan kolom id_col + TRAIT_COLS + desc_col (optional)
-    - id_col: 'SIC_1digit' atau 'SIC_2digit'
-    - desc_col: kolom yang berisi deskripsi untuk hover
-    """
     fig = go.Figure()
     df = rata_df.copy()
     if selected_ids is not None:
@@ -226,32 +179,8 @@ def mean_line_chart(rata_df, id_col: str, desc_col: str, selected_ids: List[str]
     fig.update_layout(title=" ")  # tidak ada judul
     return fig
 
-
-def boxplot_from_means(df_long, height=600):
-    fig = px.box(
-        df_long,
-        x="Dimensi_Kepribadian",
-        y="Rata_Rata",
-        color="Dimensi_Kepribadian",
-        hover_data=["SIC_1digit" if "SIC_1digit" in df_long.columns else "SIC_2digit",
-                    "Description_1" if "Description_1" in df_long.columns else "Description_2"],
-        points="all",
-        height=height
-    )
-    fig.update_traces(marker=dict(size=6, opacity=0.6))
-    fig.update_layout(
-        showlegend=False,
-        xaxis_title=None,
-        yaxis_title="Rata-Rata",
-        margin=dict(l=20, r=20, t=20, b=20)
-    )
-    return fig
-
+# Errorbar plot - STANDAR DEVIASI
 def errorbar_plot_from_means(df_long, title_suffix="", height=500):
-    """
-    Membuat grafik batang (bar chart) dengan error bar (Mean ± Std)
-    untuk menampilkan variasi standar deviasi setiap dimensi kepribadian.
-    """
     # Hitung mean dan std per dimensi
     std_summary = df_long.groupby('Dimensi_Kepribadian')['Rata_Rata'].agg(['mean', 'std']).reset_index()
 
@@ -287,23 +216,8 @@ def errorbar_plot_from_means(df_long, title_suffix="", height=500):
 
     return fig
 
-import plotly.express as px
-
+# Bar Chart - G-Index Trait SIC 1 Digit
 def plot_G_bar(df_G, title_suffix=""):
-    """
-    Create a bar chart for G(Trait) scores.
-    
-    Parameters:
-    -----------
-    df_G : pd.DataFrame
-        DataFrame with columns 'Personality Trait' and 'G(Trait)'
-    title_suffix : str
-        Additional text for the title
-    
-    Returns:
-    --------
-    plotly.graph_objects.Figure
-    """
     label_map = {
         'agree': 'Agreeableness',
         'consc': 'Conscientiousness',
@@ -321,7 +235,6 @@ def plot_G_bar(df_G, title_suffix=""):
         x='Personality Trait',
         y='G(Trait)',
         color='Personality Trait',
-        # title=f"G-Index Distribution by Personality Trait {title_suffix}",
         labels={'G(Trait)': 'G-Index (Gini Coefficient)'},
         template='simple_white',
         text_auto='.3f'
@@ -342,12 +255,8 @@ def plot_G_bar(df_G, title_suffix=""):
     
     return fig
 
-import plotly.express as px
-
+# Heatmap - COSINE SIMILARITY & PEARSON CORRELATION
 def plot_cosine_heatmap(sim_df: pd.DataFrame, id_col: str, title: str = None, height: int = 700):
-    """
-    Visualisasikan matriks cosine similarity sebagai heatmap.
-    """
     fig = px.imshow(
         sim_df,
         text_auto=True,  # Set to True to show data values in the heatmap
@@ -372,12 +281,8 @@ def plot_cosine_heatmap(sim_df: pd.DataFrame, id_col: str, title: str = None, he
 
     return fig
 
+# Dendrogram - COSINE SIMILARITY
 def plot_cosine_dendogram(sim_df: pd.DataFrame, id_col: str, title: str = None, height: int = 700):
-    """
-    Visualisasikan matriks cosine similarity sebagai dendrogram.
-    """
-
-
     # Konversi similarity menjadi distance
     distance_matrix = 1 - sim_df.values
 
@@ -402,108 +307,65 @@ def plot_cosine_dendogram(sim_df: pd.DataFrame, id_col: str, title: str = None, 
 
     return fig
 
+# Bar Chart - G-INDEX TRAIT SIC 2 DIGIT
 def plot_G_per_group_v2(df_Gv2: pd.DataFrame, id_col: str = 'SIC_1digit') -> go.Figure:
-    """
-    Plot G_i(trait) per group (output of compute_G_scores_v2).
-
-    Parameters
-    ----------
-    df_Gv2 : DataFrame
-        Wide DataFrame with first column = id_col and remaining columns = traits.
-    id_col : str
-        Group identifier column name.
-
-    Returns
-    -------
-    plotly.graph_objects.Figure
-        Grouped bar chart: x = group, y = G_i(trait), color = trait.
-    """
     if id_col not in df_Gv2.columns:
         raise ValueError(f"Kolom {id_col} tidak ditemukan pada df_Gv2.")
 
     trait_cols = [c for c in df_Gv2.columns if c != id_col]
     # Melt to long format
     df_long = df_Gv2.melt(id_vars=[id_col], value_vars=trait_cols, var_name='Trait', value_name='G_i')
-    df_long['Trait'] = df_long['Trait'].map(TRAIT_LABELS).fillna(df_long['Trait'])
+
+    # Map trait internal names to readable labels and keep a consistent order
+    df_long['Trait_Label'] = df_long['Trait'].map(TRAIT_LABELS).fillna(df_long['Trait'])
+    trait_order = [TRAIT_LABELS.get(t, t) for t in TRAIT_COLS if t in trait_cols]
+
+    # Create bar chart with traits on the x-axis, groups as different colored bars,
+    # but hide the legend (no need to show SIC)
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']  # blue, orange, green, red, purple
+    # Build a color map keyed by the readable trait label to ensure consistent coloring/order
+    trait_palette = {TRAIT_LABELS.get(t, t): c for t, c in zip(TRAIT_COLS, colors)}
+    # Keep only traits actually present in the data to avoid extra keys
+    present_traits = [t for t in trait_order]
+    color_map = {k: trait_palette[k] for k in present_traits if k in trait_palette}
 
     fig = px.bar(
         df_long,
-        x=id_col,
+        x='Trait_Label',
         y='G_i',
-        color='Trait',
-        barmode='group',
-        labels={id_col: id_col, 'G_i': 'G_i(Trait)'},
+        color='Trait_Label',
+        color_discrete_map=color_map,
+        category_orders={'Trait_Label': trait_order},
+        labels={'Trait_Label': 'Dimensi Kepribadian', 'G_i': 'G_i(Trait)'},
         text_auto='.2f',
         template='simple_white'
     )
+
+    # spacing between bars and between groups
     fig.update_layout(
         height=600,
         margin=dict(l=40, r=40, t=60, b=40),
-        legend_title="Trait"
+        bargap=0.25,        # space between bars of adjacent location coordinates
+        bargroupgap=0.12,   # space between bars of the same location (groups)
+        showlegend=False    # do not show SIC legend as requested
     )
+
+    # enforce trait order on x-axis
+    if trait_order:
+        fig.update_xaxes(categoryorder='array', categoryarray=trait_order)
+
     fig.update_traces(
-        hovertemplate="<b>%{x}</b><br>Trait: %{legendgroup}<br>G_i: %{y:.4f}<extra></extra>",
+        hovertemplate="<b>%{x}</b><br>G-index: %{y:.4f}<extra></extra>",
         textposition='outside'
     )
+
+    # clean axis titles (no SIC on axis)
+    fig.update_xaxes(title=None)
+    fig.update_yaxes(title="G_i(Trait)")
+
     return fig
 
-def plot_anova_bar(anova_df: pd.DataFrame, p_thresh: float = 0.05) -> go.Figure:
-    """
-    Bar chart of F-statistics per trait with significance coloring based on p_thresh.
-    Expects anova_df with columns: 'Trait', 'F', 'p'
-    """
-    df = anova_df.copy()
-    df['-log10(p)'] = df['p'].apply(lambda x: -math.log10(x) if pd.notna(x) and x > 0 else float("nan"))
-    df['sig'] = df['p'] < p_thresh
-
-    colors = ['#667eea', '#F56565']  # sig / non-sig palette (primary + alert)
-    df['color'] = df['sig'].map({True: colors[0], False: colors[1]})
-
-    fig = px.bar(
-        df.sort_values('F', ascending=False),
-        x='Trait',
-        y='F',
-        color='sig',
-        color_discrete_map={True: colors[0], False: colors[1]},
-        labels={'F': 'F-statistic', 'Trait': 'Trait'},
-        height=380,
-        title="ANOVA: F-statistic per Trait"
-    )
-    # add p-value as hover
-    fig.update_traces(hovertemplate="<b>%{x}</b><br>F = %{y:.3f}<br>p = %{customdata[0]:.4g}<extra></extra>",
-                      customdata=df[['p']].values)
-    fig.update_layout(showlegend=False, margin=dict(l=20, r=20, t=40, b=20), template="simple_white")
-    return fig
-
-def plot_anova_boxplots(df: pd.DataFrame, group_col: str, traits: list = TRAIT_COLS, facet_col_wrap: int = 3) -> go.Figure:
-    """
-    Faceted boxplots for all traits grouped by group_col.
-    Returns a Plotly Figure with facets (small multiples).
-    """
-    df_long = df[[group_col] + traits].melt(id_vars=[group_col], value_vars=traits, var_name='Trait', value_name='Score')
-    # map trait labels if available
-    try:
-        df_long['Trait_Label'] = df_long['Trait'].map(TRAIT_LABELS)
-    except Exception:
-        df_long['Trait_Label'] = df_long['Trait']
-
-    fig = px.box(
-        df_long,
-        x=group_col,
-        y='Score',
-        color=group_col,
-        facet_col='Trait_Label',
-        facet_col_wrap=facet_col_wrap,
-        points='all',
-        height=520,
-        color_discrete_sequence=px.colors.qualitative.Plotly
-    )
-    fig.update_layout(showlegend=False, margin=dict(l=20, r=20, t=40, b=20), template="simple_white")
-    # tighten facet axes
-    fig.for_each_xaxis(lambda a: a.update(title=''))
-    fig.for_each_yaxis(lambda a: a.update(title='Score', range=[1,7]))
-    return fig
-
+# Dendrogram - PEARSON SIMILARITY
 def plot_pearson_dendrogram(sim_df: pd.DataFrame, id_col: str = None, title: str = None, height: int = 700):
     # defensive copy / numpy array
     mat = sim_df.values.astype(float).copy()
@@ -521,6 +383,14 @@ def plot_pearson_dendrogram(sim_df: pd.DataFrame, id_col: str = None, title: str
     # Build hierarchical clustering linkage from condensed distances
     linked = linkage(condensed, method='average')
 
+    # dynamic height: scale with number of variables so large matrices get taller plots
+    n = mat.shape[0]
+    # pixels per item (tweakable). Add some padding for headers/margins.
+    per_item_px = 28
+    padding_px = 140
+    max_height_px = 3000  # cap to avoid extremely large outputs
+    computed_height = max(height, min(max_height_px, int(n * per_item_px + padding_px)))
+
     # Create dendrogram using the precomputed linkage
     fig = ff.create_dendrogram(
         mat,  # data passed only so labels/order are preserved by the factory
@@ -531,7 +401,7 @@ def plot_pearson_dendrogram(sim_df: pd.DataFrame, id_col: str = None, title: str
 
     # Update layout to show distance scale that matches 1 - Pearson (max ≈ 2)
     fig.update_layout(
-        height=height,
+        height=computed_height,
         template="simple_white",
         margin=dict(l=60, r=20, t=60, b=100),
         xaxis_tickangle=0
@@ -539,12 +409,8 @@ def plot_pearson_dendrogram(sim_df: pd.DataFrame, id_col: str = None, title: str
 
     return fig
 
+# Horizontal Bar Chart - G-INDEX PAIRS SIC 1 DIGIT
 def plot_G_pairs_bar(df_pairs: pd.DataFrame, height: int = 720) -> go.Figure:
-    """
-    Horizontal bar chart for compute_G_scores_pairs output.
-    Expects df_pairs with columns: 'Personality Pair' and 'G(Pair)' columns.
-    Sorted so highest G appears at the top.
-    """
     df = df_pairs.copy()
     if 'Personality Pair' not in df.columns or 'G(Pair)' not in df.columns:
         raise ValueError("df_pairs must contain 'Personality Pair' and 'G(Pair)' columns")
@@ -578,10 +444,51 @@ def plot_G_pairs_bar(df_pairs: pd.DataFrame, height: int = 720) -> go.Figure:
         uniformtext_mode='hide'
     )
 
-    # enforce category order to match sorted df with highest value shown at the top
-    # Plotly renders categorical y-axis from bottom-to-top following the provided array,
-    # so reverse the sorted list to put largest at the top.
     fig.update_yaxes(categoryorder='array', categoryarray=list(df_sorted['Personality Pair'][::-1]), automargin=True)
     fig.update_xaxes(automargin=True)
 
     return fig
+
+# --- Wrapper moved here so every import of plot_radar_chart uses it ---
+def enable_radar_wrapper(min_height: int = 520):
+    """
+    Wrap the module's plot_radar_chart so returned figures enforce a minimum height
+    and sensible margins to avoid label clipping. Called at import time.
+    """
+    global plot_radar_chart
+    _orig = plot_radar_chart
+
+    def _wrapped(*args, **kwargs):
+        fig = _orig(*args, **kwargs)
+        # preserve original update_layout to enforce defaults
+        _orig_update = fig.update_layout
+
+        def _enforce_min_height_and_margins(*a, **kw):
+            if 'height' in kw:
+                kw['height'] = max(kw['height'], min_height)
+            else:
+                kw.setdefault('height', min_height)
+            kw.setdefault('margin', dict(l=80, r=80, t=80, b=80))
+            kw.setdefault('autosize', False)
+            return _orig_update(*a, **kw)
+
+        fig.update_layout = _enforce_min_height_and_margins
+
+        # apply extra polar/legend tweaks (safe to call)
+        try:
+            fig.update_layout(
+                polar=dict(
+                    radialaxis=dict(tickfont=dict(size=10)),
+                    angularaxis=dict(tickfont=dict(size=11))
+                ),
+                legend=dict(orientation='h', y=-0.15, x=0.5, xanchor='center')
+            )
+        except Exception:
+            pass
+
+        return fig
+
+    plot_radar_chart = _wrapped
+
+# enable wrapper with default min_height
+enable_radar_wrapper(min_height=520)
