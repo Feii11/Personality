@@ -1,14 +1,12 @@
 # app.py
 from typing import TYPE_CHECKING
 
-# Help static analyzers / type-checkers find streamlit without affecting runtime:
 if TYPE_CHECKING:
-    import streamlit as st   # type: ignore
+    import streamlit as st
 
 try:
     import streamlit as st
 except Exception:
-    # Minimal stub to allow static analysis / non-UI execution when streamlit is not available.
     from types import SimpleNamespace
 
     def _noop(*a, **k):
@@ -26,7 +24,6 @@ except Exception:
     def _tabs(items):
         return [_CM() for _ in items]
 
-    # cache_data should be a decorator; here it is an identity decorator
     def _cache_data(func=None):
         if func is None:
             def _decorator(f):
@@ -76,7 +73,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Simplified CSS loader (reads external styles.css)
 def inject_css():
     css_path = Path(__file__).parent / "styles.css"
     if css_path.exists():
@@ -87,23 +83,18 @@ def inject_css():
 
 inject_css()
 
-# Global registry so any chart rendered with show_chart_with_expand is available for expand handling
 CHART_REGISTRY = {}
 
 # -------------------------
 # Utility helpers for expand behavior
 # -------------------------
 def _current_qs():
-    # Use st.query_params and return a shallow copy so we don't mutate Streamlit's internal state
     params = dict(st.query_params)
-    # keep as dict of lists for urlencode(doseq=True)
     return params
 
 def _make_qs(params):
-    # params expected as dict where values are lists
     flat = {}
     for k, v in params.items():
-        # if value already list, pass through
         flat[k] = v
     return "?" + urlencode(flat, doseq=True) if flat else ""
 
@@ -118,11 +109,9 @@ def build_close_url():
     return _make_qs(params)
 
 def show_chart_with_expand(fig, chart_id, height=None, config=None):
-    # Register the figure so expand logic can find it deterministically
     try:
         CHART_REGISTRY[chart_id] = fig
     except Exception:
-        # non-fatal; continue to render
         pass
 
     # Render chart
@@ -132,7 +121,6 @@ def show_chart_with_expand(fig, chart_id, height=None, config=None):
     if config is None:
         config = {'displayModeBar': False}
     st.plotly_chart(fig, use_container_width=True, config=config)
-    # Render hover-only expand link placed right after the chart (CSS uses sibling selector)
     href = build_expand_url(chart_id)
     html = f'<a class="expand-link" href="{href}" target="_self">🔍 Expand</a>'
     st.markdown(html, unsafe_allow_html=True)
@@ -155,18 +143,46 @@ def load_file(uploaded_file):
 @st.cache_data
 def prepare_and_compute(upload):
     dfCEO = load_file(upload)
+    if dfCEO is None:
+        raise ValueError("Uploaded file could not be read")
+
+    def validate_input_df(df: pd.DataFrame):
+        required_traits = TRAIT_COLS
+        required_meta = ['EXEC_FULLNAME']
+        sic_cols = ['SIC', 'SIC_1digit', 'SIC_2digit']
+
+        missing_meta = [c for c in required_meta if c not in df.columns]
+        if missing_meta:
+            raise ValueError(f"Required column(s) missing: {', '.join(missing_meta)}")
+
+        missing_traits = [c for c in required_traits if c not in df.columns]
+        if missing_traits:
+            raise ValueError(f"Missing trait column(s): {', '.join(missing_traits)}")
+
+        if not any(c in df.columns for c in sic_cols):
+            raise ValueError("No SIC column found. Provide one of: 'SIC', 'SIC_1digit', or 'SIC_2digit'")
+
+        for t in required_traits:
+            coerced = pd.to_numeric(df[t].astype(str).str.replace(",", "."), errors='coerce')
+            if coerced.notna().sum() == 0:
+                raise ValueError(f"Trait column '{t}' does not contain any numeric values")
+
+        if df.shape[0] < 3:
+            raise ValueError("Dataset too small: need at least 3 records to perform analysis")
+
+        return True
+
+    # run validation and then continue processing
+    validate_input_df(dfCEO)
+
     dfSIC = pd.read_excel('data/2 digit.xlsx')
     dfCEO, dfSIC = prepare_data(dfCEO, dfSIC)
 
-    # Ensure trait columns are numeric to prevent operations on datetimes/objects
-    if dfCEO is None:
-        raise ValueError("Uploaded file could not be read")
     dfCEO[TRAIT_COLS] = dfCEO[TRAIT_COLS].apply(pd.to_numeric, errors='coerce')
 
     rata_rata1 = get_mean_sic1(dfCEO, dfSIC)
     rata_rata2 = get_mean_sic2(dfCEO, dfSIC)
 
-    # Fill missing trait values in the aggregated dataframes with column means to avoid downstream NaN errors
     for agg_df in (rata_rata1, rata_rata2):
         if agg_df is None:
             continue
@@ -180,7 +196,7 @@ def prepare_and_compute(upload):
 
     # Menghitung overall mean untuk semua CEO
     overall_mean = dfCEO[TRAIT_COLS].mean(numeric_only=True).to_frame().T
-    
+
     # Menambahkan kolom SIC_1digit dan Description_1 untuk overall_mean
     overall_mean.insert(0, 'SIC_1digit', 'All')
     overall_mean.insert(1, 'Description_1', 'All CEOs Combined')
@@ -215,11 +231,19 @@ upload = st.file_uploader(
     help="Upload your CEO personality dataset"
 )
 
-
 if upload is not None:
-    (dfCEO, dfSIC, rata_rata1, rata_rata2, overall_mean,
-     cosine_sim1, cosine_sim2, pearson1, pearson2,
-     df_G1, df_G2, df_Gv2_sic1) = prepare_and_compute(upload)
+    try:
+        (dfCEO, dfSIC, rata_rata1, rata_rata2, overall_mean,
+         cosine_sim1, cosine_sim2, pearson1, pearson2,
+         df_G1, df_G2, df_Gv2_sic1) = prepare_and_compute(upload)
+    
+    # Error handling
+    except ValueError:
+        st.error("Data tidak sesuai")
+        st.stop()
+    except Exception as e:
+        st.error(f"Error processing uploaded file: {e}")
+        st.stop()
     
     figpie = pie_chart_styled(dfCEO, column='SIC_1digit')
     min_height = 520
@@ -234,11 +258,9 @@ if upload is not None:
         return _orig_update_fig1(*args, **kwargs)
     fig1.update_layout = _enforce_min_height_fig1
 
-    # ensure fig1 reserves enough space for radar labels
     fig1.update_layout(height=min_height, margin=dict(l=80, r=80, t=80, b=80), autosize=False)
 
     # Radar (tab1)
-    # Note: tab-specific selection will still work; initial radar default is 'All'
     fig_radar_all = plot_radar_chart(overall_mean, id_col='SIC_1digit', selected_id='All', desc_col='Description_1')
 
     # Error bars
@@ -262,9 +284,7 @@ if upload is not None:
     # G-Pairs moved to be displayed inside the SIC 1 tab (below G-Index) to avoid duplicate rendering
 
     # Tab2 figures
-    # default: show all SIC2 aggregated trends; filtering applied at render-time
     fig2_default = mean_line_chart(rata_rata2, id_col='SIC_2digit', desc_col='Description_2', selected_ids=None)
-    # Ensure the line chart uses the same minimum height as radar charts
     fig2_default.update_layout(height=min_height, margin=dict(l=20, r=20, t=20, b=20), autosize=False)
 
     # Radar tab2
@@ -281,17 +301,14 @@ if upload is not None:
     fig_err2_default = errorbar_plot_from_means(grouped_long_default, title_suffix="")
     fig_err2_default.update_layout(height=520, margin=dict(l=20, r=20, t=20, b=20))
 
-    # Cosine / Pearson SIC2 defaults
+    # Cosine & Pearson SIC2 defaults
     fig_cos_default_2 = plot_cosine_heatmap(cosine_sim2, id_col='SIC_2digit')
     fig_cos_default_2.update_layout(height=340, margin=dict(l=20, r=20, t=20, b=20))
     fig_pear_default_2 = plot_cosine_heatmap(pearson2, id_col='SIC_2digit')
     fig_pear_default_2.update_layout(height=340, margin=dict(l=20, r=20, t=20, b=20))
 
-    # G per group
-    # We'll defer building the group-specific bar until selection, but keep a default bar as placeholder
     fig_g2_default = None
 
-    # Build a mapping of chart_id -> figure for expand popups (register defaults)
     chart_map = {
         'pie': figpie,
         'mean_sic1': fig1,
@@ -305,20 +322,15 @@ if upload is not None:
         'err_sic2': fig_err2_default,
         'cos_sic2': fig_cos_default_2,
         'pear_sic2': fig_pear_default_2
-        # g_sic2 will be added dynamically when created per selection
     }
-    # ensure registry also knows defaults so expand works when user opens expand URL directly
     CHART_REGISTRY.update(chart_map)
 
-    # If user requested an expanded view via query param, show full-size chart at top and provide a Close link
     q = dict(st.query_params)
     if 'expand' in q:
         chart_to_expand = q.get('expand')[0]
-        # First try registry / map
         expanded_fig = CHART_REGISTRY.get(chart_to_expand) or chart_map.get(chart_to_expand)
 
         if expanded_fig is None:
-            # dynamic g_sic2 variations: chart id might be 'g_sic2_<SIC1>'
             if chart_to_expand.startswith('g_sic2_'):
                 sic1_key = chart_to_expand.replace('g_sic2_', '')
                 df_sic1 = df_Gv2_sic1[df_Gv2_sic1['SIC_1digit'].astype(str) == sic1_key]
@@ -328,7 +340,6 @@ if upload is not None:
                     df_sic1_clean = df_sic1_clean.groupby('SIC_1digit', as_index=False).mean(numeric_only=True)
                 if not df_sic1_clean.empty:
                     expanded_fig = plot_G_per_group_v2(df_sic1_clean, id_col='SIC_1digit')
-            # radar variations: radar_sic1_<id> or radar_sic2_<id>
             elif chart_to_expand.startswith('radar_sic1_'):
                 selected = chart_to_expand.replace('radar_sic1_', '')
                 if selected.lower() == 'all' or selected == 'All':
@@ -341,14 +352,11 @@ if upload is not None:
 
         if expanded_fig is not None:
             st.markdown(f'<a class="close-expand" href="{build_close_url()}">✖ Close</a>', unsafe_allow_html=True)
-            # render big
             expanded_fig.update_layout(height=900)
             st.plotly_chart(expanded_fig, use_container_width=True, config={'displayModeBar': True})
-            st.stop()  # stop further rendering of the app while expanded view is shown
+            st.stop()
 
-    # -------------------------
-    # Normal app rendering with helper that adds hover-only expand link after each chart
-    # -------------------------
+
     cols = st.columns([3, 1, 1, 1, 1, 1])
     metric_cols = st.columns(5, gap="large")
     with metric_cols[0]:
@@ -402,7 +410,6 @@ if upload is not None:
                 show_chart_with_expand(fig_radar, f'radar_sic1_{selected_sic1}')
 
         # Row 2: Standard Deviation and G-Index
-        
         err_col, g_col = st.columns([1, 1])
         with err_col:
             st.markdown('<p class="chart-title">Standar Deviasi</p>', unsafe_allow_html=True)
@@ -452,10 +459,10 @@ if upload is not None:
             key="tab2_filter"
         )
 
+        # Filter berdasarkan SIC 1 Digit
         if sic1_filter == 'All':
             rata_rata2_filtered = rata_rata2.copy()
         else:
-            # Filter by SIC_1digit (was incorrectly filtering SIC_2digit)
             rata_rata2_filtered = rata_rata2[rata_rata2['SIC_1digit'].astype(str) == sic1_filter]
 
         num_categories = len(rata_rata2_filtered)
@@ -487,7 +494,6 @@ if upload is not None:
                 selected_sic2 = st.selectbox("", options=list_sic2, key="tab2_radar", label_visibility="collapsed")
                 fig_radar2 = plot_radar_chart(rata_rata2, id_col='SIC_2digit', selected_id=selected_sic2, desc_col='Description_2')
                 fig_radar2.update_layout(height=320, margin=dict(l=20, r=20, t=20, b=20))
-                # register radar for expand with deterministic id
                 show_chart_with_expand(fig_radar2, f'radar_sic2_{selected_sic2}')
 
         # Row 2 - STANDAR DEVIASI DAN G-INDEX SIC 2 DIGIT
@@ -505,7 +511,6 @@ if upload is not None:
             grouped_long['Dimensi_Kepribadian'] = grouped_long['Dimensi_Kepribadian'].map(TRAIT_LABELS)
             fig_err2 = errorbar_plot_from_means(grouped_long, title_suffix="")
             fig_err2.update_layout(height=520, margin=dict(l=20, r=20, t=20, b=20))
-            # register updated err_sic2 for expand
             CHART_REGISTRY['err_sic2'] = fig_err2
             show_chart_with_expand(fig_err2, 'err_sic2')
 
@@ -544,7 +549,6 @@ if upload is not None:
                 st.info("No data available for this selection")
         
         # Row 3: COSINE SIMILARITY AND PEARSON CORRELATION SIC 2 DIGIT
-        st.markdown('<p class="chart-title">Similarity (Cosine vs Pearson)</p>', unsafe_allow_html=True)
         sim_col_cos2, sim_col_pear2 = st.columns(2)
 
         # COSINE SIMILARITY
@@ -552,17 +556,14 @@ if upload is not None:
             st.markdown('<div style="font-weight:700; margin-bottom:0.3rem;">Cosine Similarity</div>', unsafe_allow_html=True)
             cos_viz_choice2 = st.radio("", ["Dendrogram", "Heatmap"], horizontal=True, key="tab2_cos_viz", label_visibility="collapsed")
 
-            # Try to subset the similarity matrix to only SIC-2 categories in the current SIC-1 filter
             def _subset_sim_matrix(sim_df):
                 if sic1_filter == 'All':
                     return sim_df
                 try:
                     ids = rata_rata2_filtered['SIC_2digit'].astype(str).unique().tolist()
-                    # boolean masks using stringified index/columns to be robust vs int labels
                     row_mask = sim_df.index.map(str).isin(ids)
                     col_mask = sim_df.columns.map(str).isin(ids)
                     sim_sub = sim_df.loc[row_mask, col_mask]
-                    # if submatrix has at least one element return it, otherwise fall back to original
                     if sim_sub.shape[0] > 0 and sim_sub.shape[1] > 0:
                         return sim_sub
                 except Exception:
@@ -589,7 +590,6 @@ if upload is not None:
             st.markdown('<div style="font-weight:700; margin-bottom:0.3rem;">Pearson Similarity</div>', unsafe_allow_html=True)
             pear_viz_choice2 = st.radio("", ["Dendrogram", "Heatmap"], horizontal=True, key="tab2_pear_viz", label_visibility="collapsed")
 
-            # reuse the same subsetting logic
             sim_pear_to_plot = _subset_sim_matrix(pearson2)
 
             if pear_viz_choice2 == "Dendrogram":
@@ -618,6 +618,12 @@ else:
         <h3 style='color: #667eea; margin-bottom: 0.5rem;'> Welcome to CEO Personality Analytics</h3>
         <p style='color: #666; font-size: 0.95rem; margin-bottom: 1rem;'>
             Upload your CEO dataset (CSV or Excel) to begin personality analysis by SIC classification.
+            <br/><br/> Make sure your data includes:
+            <ul style='text-align: left; display: inline-block; margin-top: 0.5rem;'>
+                <li>EXEC_FULLNAME: CEO full name</li>
+                <li>SIC: 4 digit SIC code</li>
+                <li>Personality trait columns: Agree, Consc, Extra, Neuro, Openn</li>
+            </ul>
         </p>
     </div>
     """, unsafe_allow_html=True)

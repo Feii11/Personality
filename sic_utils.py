@@ -10,11 +10,6 @@ from scipy.stats import f_oneway
 TRAIT_COLS = ['agree', 'consc', 'extra', 'neuro', 'openn']
 
 def prepare_data(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Standardisasi kolom SIC, tambahkan kolom SIC_2digit di dfCEO dan dfSIC.
-    Tidak mengubah kolom SIC_1digit karena sudah tersedia di dfSIC.
-    Mengembalikan (dfCEO_clean, dfSIC_clean).
-    """
     dfCEO = dfCEO.copy()
     dfSIC = dfSIC.copy()
     
@@ -28,10 +23,10 @@ def prepare_data(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> tuple[pd.DataFrame
     else:
         raise ValueError("dfCEO tidak memiliki kolom 'SIC' atau 'SIC_2digit'")
 
-    # ---------- Samakan tipe data dulu ----------
+    # Pastikan tipe data SIC_2digit adalah string
     dfSIC['SIC_2digit'] = dfSIC['SIC_2digit'].astype(str).str.zfill(2)
 
-    # ---------- Mapping SIC_1digit dari dfSIC ----------
+    # Mapping SIC_1digit dari dfSIC
     if 'SIC_2digit' in dfSIC.columns and 'SIC_1digit' in dfSIC.columns:
         mapping = dfSIC.drop_duplicates(subset=['SIC_2digit'])[['SIC_2digit', 'SIC_1digit']]
         dfCEO = dfCEO.merge(mapping, on='SIC_2digit', how='left')
@@ -48,7 +43,7 @@ def prepare_data(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> tuple[pd.DataFrame
     else:
         raise ValueError("Kolom 'SIC_2digit' tidak ditemukan di dfSIC")
     
-    # drop rows where SIC_1digit is missing or blank (for both dfCEO and dfSIC)
+    # Filter dfCEO untuk hanya baris dengan SIC_1digit valid
     if 'SIC_1digit' in dfCEO.columns:
         non_na = dfCEO['SIC_1digit'].notna()
         dfCEO.loc[non_na, 'SIC_1digit'] = dfCEO.loc[non_na, 'SIC_1digit'].astype(str).str.strip()
@@ -56,6 +51,17 @@ def prepare_data(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> tuple[pd.DataFrame
         dfCEO = dfCEO[mask_ceo].reset_index(drop=True)
     else:
         raise ValueError("dfCEO tidak memiliki kolom 'SIC_1digit' setelah pemetaan.")
+    
+    # Pastikan personality traits 1-7 dan numeric
+    missing_traits = [t for t in TRAIT_COLS if t not in dfCEO.columns]
+    if missing_traits:
+        raise ValueError(f"Kolom trait tidak ditemukan di dfCEO: {missing_traits}")
+
+    for t in TRAIT_COLS:
+        dfCEO[t] = pd.to_numeric(dfCEO[t].astype(str).str.replace(",", "."), errors="coerce")
+
+    valid_mask = dfCEO[TRAIT_COLS].apply(lambda col: col.between(1, 7)).all(axis=1)
+    dfCEO = dfCEO[valid_mask].reset_index(drop=True)
 
     return dfCEO, dfSIC
 
@@ -98,7 +104,7 @@ def prepare_data_v2(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> None:
     try:
         out_dir = Path(__file__).resolve().parent
     except NameError:
-        out_dir = Path(os.path.abspath(""))  # fallback for Jupyter
+        out_dir = Path(os.path.abspath(""))
 
     path_ceo = out_dir / 'dfCEO_clean.xlsx'
 
@@ -107,14 +113,7 @@ def prepare_data_v2(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> None:
     except Exception as e:
         raise IOError(f"Gagal menyimpan Excel ke '{out_dir}': {e}")
 
-    # tidak mengembalikan apa-apa (files tersimpan)
-
 def get_mean_sic1(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> pd.DataFrame:
-    """
-    Hitung rata-rata skor personality per SIC_1digit.
-    Tambahkan Description_1 dari dfSIC jika ada.
-    Kembalikan DataFrame hasil, tidak menyimpan ke file.
-    """
     dfCEO = dfCEO.copy()
     dfSIC = dfSIC.copy()
 
@@ -136,13 +135,6 @@ def get_mean_sic1(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> pd.DataFrame:
     return rata1
 
 def get_mean_sic1_v2(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> None:
-    """
-    Hitung rata-rata skor personality per SIC_1digit.
-    Tambahkan Description_1 dari dfSIC jika ada.
-    Alih-alih mengembalikan DataFrame, fungsi ini menyimpan hasil ke file Excel.
-    Jika output_path None -> simpan 'mean_sic1.xlsx' di folder modul.
-    """
-
     dfCEO = dfCEO.copy()
     dfSIC = dfSIC.copy()
 
@@ -177,10 +169,6 @@ def get_mean_sic1_v2(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> None:
     # tidak mengembalikan apa-apa (file tersimpan)
 
 def get_mean_sic2(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> pd.DataFrame:
-    """
-    Hitung rata-rata skor personality per SIC_2digit.
-    Kembalikan dataframe: SIC_2digit + TRAIT_COLS + SIC_1digit + Description_2 (jika ada) + Description_1 (dari dfSIC).
-    """
     dfCEO = dfCEO.copy()
     dfSIC = dfSIC.copy()
 
@@ -210,10 +198,6 @@ def get_mean_sic2(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> pd.DataFrame:
     return rata2
 
 def get_mean_sic2_v2(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> None:
-    """
-    Hitung rata-rata skor personality per SIC_2digit.
-    Kembalikan dataframe: SIC_2digit + TRAIT_COLS + SIC_1digit + Description_2 (jika ada).
-    """
     dfCEO = dfCEO.copy()
     dfSIC = dfSIC.copy()
 
@@ -249,9 +233,6 @@ def get_mean_sic2_v2(dfCEO: pd.DataFrame, dfSIC: pd.DataFrame) -> None:
         raise IOError(f"Gagal menyimpan hasil ke Excel di '{out_path}': {e}")    
 
 def build_hover_maps(dfSIC: pd.DataFrame) -> tuple[dict, dict]:
-    """
-    Kembalikan dua dict: hover_map_1 (SIC_1digit -> Description_1) dan hover_map_2 (SIC_2digit -> Description_2)
-    """
     hover_map_1 = {}
     hover_map_2 = {}
 
@@ -266,10 +247,6 @@ def build_hover_maps(dfSIC: pd.DataFrame) -> tuple[dict, dict]:
 import pandas as pd
 
 def prepare_long_format(df, id_col, desc_col):
-    """
-    Mengubah dataframe rata-rata ke format long:
-    dari kolom agree, consc, extra, neuro, openn → baris Dimensi_Kepribadian dan Rata_Rata
-    """
     long_df = df.melt(
         id_vars=[id_col, desc_col],
         value_vars=['agree', 'consc', 'extra', 'neuro', 'openn'],
@@ -277,7 +254,6 @@ def prepare_long_format(df, id_col, desc_col):
         value_name='Rata_Rata'
     )
 
-    # Ganti label jadi versi panjang (sesuai plots.py)
     label_map = {
         'agree': 'Agreeableness',
         'consc': 'Conscientiousness',
@@ -291,40 +267,21 @@ def prepare_long_format(df, id_col, desc_col):
 TRAIT_COLS = ['agree', 'consc', 'extra', 'neuro', 'openn']
 
 def compute_G_scores(df_mean: pd.DataFrame, id_col: str) -> pd.DataFrame:
-    """
-    Hitung G-index untuk setiap trait personality sebagai total selisih absolut
-    dari rata-rata antar kelompok SIC.
-    
-    Parameters:
-    -----------
-    df_mean : pd.DataFrame
-        DataFrame berisi rata-rata personality traits per kelompok
-    id_col : str
-        Nama kolom untuk pengelompokan ('SIC_1digit' atau 'SIC_2digit')
-    
-    Returns:
-    --------
-    pd.DataFrame
-        DataFrame dengan kolom: 'Personality Trait' dan 'G(Trait)'
-    """
     G_values = {}
     
     for trait in TRAIT_COLS:
         if trait not in df_mean.columns:
             continue
         
-        # Ambil nilai rata-rata trait untuk semua kelompok
         values = df_mean[trait].dropna().astype(float).values
         
-        # Hitung total selisih absolut antar semua pasangan kelompok
         total_diff = 0.0
         for i in range(len(values)):
             for j in range(i + 1, len(values)):
                 total_diff += abs(values[i] - values[j])
         
         G_values[trait] = total_diff
-    
-    # Convert to DataFrame format untuk plotting
+
     df_G = pd.DataFrame({
         'Personality Trait': list(G_values.keys()),
         'G(Trait)': list(G_values.values())
@@ -333,13 +290,6 @@ def compute_G_scores(df_mean: pd.DataFrame, id_col: str) -> pd.DataFrame:
     return df_G
 
 def compute_G_scores_pairs(df_mean: pd.DataFrame, id_col: str) -> pd.DataFrame:
-    """
-    Hitung G-index untuk kombinasi 2 personality traits.
-    Untuk tiap pasangan trait (t1,t2) hitung:
-      G_pair = sum_{i<j} EuclideanDist( (x_i_t1, x_i_t2), (x_j_t1, x_j_t2) )
-    dimana i,j adalah baris (kelompok) dalam df_mean yang memiliki nilai kedua trait.
-    Returns DataFrame dengan kolom: 'Personality Pair' dan 'G(Pair)'.
-    """
     if id_col not in df_mean.columns:
         raise ValueError(f"Kolom '{id_col}' tidak ditemukan di DataFrame")
 
@@ -387,19 +337,9 @@ def compute_G_scores_v2(
     save: bool = True,
     output_path: Optional[str] = None
 ) -> pd.DataFrame:
-    """
-    Hitung G(trait) per SIC_1digit dari rata-rata trait per SIC_2digit.
-
-    Jika save=True maka hasil akan disimpan ke file Excel otomatis.
-    - output_path: jika diberikan, simpan ke path tersebut (.xlsx). Jika None, simpan ke
-      current working directory dengan nama 'G_scores_sic1_from_sic2.xlsx'.
-
-    Kembalian: DataFrame hasil (SIC_1digit, Description_1, kolom trait, dan N_SIC2 = jumlah SIC_2digit yang dihitung).
-    """
     if trait_cols is None:
         trait_cols = ["agree", "consc", "extra", "neuro", "openn"]
 
-    # cek kolom
     required = [sic2_col, sic1_col] + trait_cols
     missing = [c for c in required if c not in df_mean.columns]
     if missing:
@@ -407,25 +347,20 @@ def compute_G_scores_v2(
 
     df = df_mean.copy()
 
-    # normalize keys
     df[sic1_col] = df[sic1_col].astype(str).str.strip()
     df[sic2_col] = df[sic2_col].astype(str).str.strip()
     if desc_col in df.columns:
         df[desc_col] = df[desc_col].astype(str).str.strip()
 
-    # convert trait columns to numeric
     for t in trait_cols:
         df[t] = pd.to_numeric(df[t].astype(str).str.replace(",", "."), errors="coerce")
 
     results = []
     for sic1, grp in df.groupby(sic1_col, sort=True):
-        # representative description
         desc_val = grp[desc_col].iloc[0] if desc_col in grp.columns else ""
 
-        # drop duplicate SIC_2digit
         sub = grp.drop_duplicates(subset=[sic2_col]).reset_index(drop=True)
 
-        # NaN handling (update sub and count after handling)
         if sub[trait_cols].isna().any().any():
             if na_action == "raise":
                 raise ValueError(f"NaN found in traits for SIC_1digit={sic1}")
@@ -436,7 +371,6 @@ def compute_G_scores_v2(
             else:
                 raise ValueError("na_action must be 'raise','drop','fill0'")
 
-        # number of SIC_2digit rows used in computation for this SIC_1digit
         n_sic2 = int(sub.shape[0])
 
         row = {
@@ -459,35 +393,9 @@ def compute_G_scores_v2(
 
     res_df = pd.DataFrame(results).sort_values(sic1_col).reset_index(drop=True)
 
-    # Auto-save if requested
-    if save:
-        try:
-            if output_path:
-                out_path = Path(output_path)
-            else:
-                # save to current working directory so file appears in "this folder"
-                out_dir = Path.cwd()
-                out_path = out_dir / "G_scores_sic1_from_sic2.xlsx"
-
-            # ensure parent exists
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # write to Excel
-            with pd.ExcelWriter(out_path, engine='openpyxl') as writer:
-                res_df.to_excel(writer, index=False, sheet_name='G_scores_SIC1')
-
-        except Exception as e:
-            raise IOError(f"Gagal menyimpan hasil G_scores_v2 ke '{out_path}': {e}")
-
     return res_df
 
 def compute_cosine_similarity(df_mean: pd.DataFrame, id_col: str) -> pd.DataFrame:
-    """
-    Hitung cosine similarity antar kelompok (SIC 1 digit atau 2 digit)
-    berdasarkan nilai rata-rata personality traits.
-    Kembalikan DataFrame similarity (index & columns = id_col).
-    Tidak membuat file.
-    """
     df = df_mean.copy()
     if id_col not in df.columns:
         raise ValueError(f"Kolom '{id_col}' tidak ditemukan di DataFrame")
@@ -512,12 +420,6 @@ def compute_cosine_similarity(df_mean: pd.DataFrame, id_col: str) -> pd.DataFram
     return sim_df
 
 def compute_cosine_similarity_v2(df_mean: pd.DataFrame, id_col: str) -> None:
-    """
-    Hitung cosine similarity antar kelompok (SIC 1 digit atau 2 digit) 
-    berdasarkan nilai rata-rata personality traits.
-    Fungsi tidak mengembalikan apa-apa, melainkan menyimpan hasil ke Excel
-    (file: cosine_similarity_<id_col>.xlsx di folder modul).
-    """
     df = df_mean.copy()
     if id_col not in df.columns:
         raise ValueError(f"Kolom '{id_col}' tidak ditemukan di DataFrame")
@@ -555,22 +457,6 @@ def compute_cosine_similarity_v2(df_mean: pd.DataFrame, id_col: str) -> None:
         raise IOError(f"Gagal menyimpan cosine similarity ke '{out_path}': {e}")
     
 def compute_pearson_similarity(df_mean: pd.DataFrame, id_col: str) -> pd.DataFrame:
-    """
-    Hitung Pearson correlation similarity untuk traits antar kelompok SIC 
-    berdasarkan DataFrame rata-rata traits.
-
-    Parameters:
-    -----------
-    df_mean : pd.DataFrame 
-        DataFrame berisi rata-rata personality traits per SIC
-    id_col : str
-        Nama kolom untuk pengelompokan ('SIC_1digit' atau 'SIC_2digit')
-    
-    Returns:
-    --------
-    pd.DataFrame
-        Matrix korelasi Pearson antar kelompok SIC
-    """
     df = df_mean.copy()
     
     # Validasi input
@@ -580,10 +466,8 @@ def compute_pearson_similarity(df_mean: pd.DataFrame, id_col: str) -> pd.DataFra
     if missing_traits:
         raise ValueError(f"Trait columns missing: {missing_traits}")
 
-    # Set index ke id_col untuk memudahkan pivoting    
     df = df.set_index(id_col)[TRAIT_COLS]
     
-    # Hitung korelasi Pearson antar kelompok
     pearson_matrix = df.T.corr(method='pearson')
     
     return pearson_matrix

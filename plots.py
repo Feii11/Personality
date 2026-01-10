@@ -31,11 +31,10 @@ def style_common(fig: go.Figure, y_range=(1,7), height=600):
 
 # Radar Chart - MEAN
 def plot_radar_chart(rata_df: pd.DataFrame, id_col: str, selected_id: str, desc_col: str = None) -> go.Figure:
-    # Filter for selected group
+    # Filter buat SIC terpilih
     row = rata_df[rata_df[id_col].astype(str) == str(selected_id)]
     
     if row.empty:
-        # Return empty figure if no data
         fig = go.Figure()
         fig.add_annotation(
             text="No data available",
@@ -47,15 +46,12 @@ def plot_radar_chart(rata_df: pd.DataFrame, id_col: str, selected_id: str, desc_
     
     row = row.iloc[0]
     
-    # Get trait values
     values = [row[trait] for trait in TRAIT_COLS]
     labels = [TRAIT_LABELS.get(trait, trait) for trait in TRAIT_COLS]
     
-    # Close the radar chart by repeating first value
     values_closed = values + [values[0]]
     labels_closed = labels + [labels[0]]
     
-    # Get description if available
     desc = row[desc_col] if desc_col and desc_col in rata_df.columns else ""
     title_text = f"{id_col}: {selected_id}"
     if desc:
@@ -110,11 +106,11 @@ def pie_chart_styled(dataframe: pd.DataFrame, column: str = 'SIC_1digit') -> go.
     counts = counts.sort_values('count', ascending=False).reset_index(drop=True)
     counts['percent'] = counts['count'] / counts['count'].sum() * 100
 
-    # --- warna pastel lembut ---
-    colors = px.colors.qualitative.Pastel
-    if len(colors) < len(counts):
-        from itertools import cycle, islice
-        colors = list(islice(cycle(colors), len(counts)))
+    # # --- warna pastel lembut ---
+    # colors = px.colors.qualitative.Pastel
+    # if len(colors) < len(counts):
+    #     from itertools import cycle, islice
+    #     colors = list(islice(cycle(colors), len(counts)))
 
     # --- buat donut chart ---
     fig = go.Figure(
@@ -122,10 +118,10 @@ def pie_chart_styled(dataframe: pd.DataFrame, column: str = 'SIC_1digit') -> go.
             labels=counts[column],
             values=counts['count'],
             hole=0.45,
-            marker=dict(colors=colors, line=dict(color='white', width=2)),
+            marker=dict( line=dict(color='white', width=2)),
             textinfo='label+percent',
             textposition='outside',
-            pull=[0.05]*len(counts),  # efek pop keluar
+            pull=[0.05]*len(counts),
             hovertemplate=(
                 "<b>%{label}</b><br>"
                 "Jumlah: %{value}<br>"
@@ -181,10 +177,8 @@ def mean_line_chart(rata_df, id_col: str, desc_col: str, selected_ids: List[str]
 
 # Errorbar plot - STANDAR DEVIASI
 def errorbar_plot_from_means(df_long, title_suffix="", height=500):
-    # Hitung mean dan std per dimensi
     std_summary = df_long.groupby('Dimensi_Kepribadian')['Rata_Rata'].agg(['mean', 'std']).reset_index()
 
-    # Plot bar dengan error bar
     fig = px.bar(
         std_summary,
         x='Dimensi_Kepribadian',
@@ -196,7 +190,6 @@ def errorbar_plot_from_means(df_long, title_suffix="", height=500):
         height=height
     )
 
-    # Custom hover agar tampil Mean dan Std rapi
     fig.update_traces(
         hovertemplate=(
             "Dimensi: %{x}<br>"
@@ -226,7 +219,6 @@ def plot_G_bar(df_G, title_suffix=""):
         'openn': 'Openness'
     }
     
-    # Map trait names to full labels
     df_plot = df_G.copy()
     df_plot['Personality Trait'] = df_plot['Personality Trait'].map(label_map).fillna(df_plot['Personality Trait'])
     
@@ -259,9 +251,9 @@ def plot_G_bar(df_G, title_suffix=""):
 def plot_cosine_heatmap(sim_df: pd.DataFrame, id_col: str, title: str = None, height: int = 700):
     fig = px.imshow(
         sim_df,
-        text_auto=True,  # Set to True to show data values in the heatmap
+        text_auto=True,
         color_continuous_scale="RdBu_r",
-        aspect="equal",  # Changed from "auto" to "equal" to make it square
+        aspect="equal", # Biar heatmapnya kotak
         origin="upper",
         labels=dict(x=id_col, y=id_col, color="Cosine Similarity"),
     )
@@ -283,26 +275,22 @@ def plot_cosine_heatmap(sim_df: pd.DataFrame, id_col: str, title: str = None, he
 
 # Dendrogram - COSINE SIMILARITY
 def plot_cosine_dendogram(sim_df: pd.DataFrame, id_col: str, title: str = None, height: int = 700):
-    # Konversi similarity menjadi distance
     distance_matrix = 1 - sim_df.values
 
-    # Lakukan hierarchical clustering
     linked = linkage(distance_matrix, method='ward')
 
-    # Buat dendrogram
     fig = ff.create_dendrogram(
         sim_df.values,
-        orientation='left',  # Changed to 'left' to put labels on the y-axis
+        orientation='left',
         labels=sim_df.index.tolist(),
         linkagefun=lambda x: linked
     )
 
-    # Rotate the figure 90 degrees
     fig.update_layout(
         height=height,
         template="simple_white",
         margin=dict(l=60, r=20, t=60, b=100),
-        xaxis_tickangle=0  # Make labels horizontal
+        xaxis_tickangle=0
     )
 
     return fig
@@ -313,19 +301,14 @@ def plot_G_per_group_v2(df_Gv2: pd.DataFrame, id_col: str = 'SIC_1digit') -> go.
         raise ValueError(f"Kolom {id_col} tidak ditemukan pada df_Gv2.")
 
     trait_cols = [c for c in df_Gv2.columns if c != id_col]
-    # Melt to long format
     df_long = df_Gv2.melt(id_vars=[id_col], value_vars=trait_cols, var_name='Trait', value_name='G_i')
 
-    # Map trait internal names to readable labels and keep a consistent order
     df_long['Trait_Label'] = df_long['Trait'].map(TRAIT_LABELS).fillna(df_long['Trait'])
     trait_order = [TRAIT_LABELS.get(t, t) for t in TRAIT_COLS if t in trait_cols]
 
-    # Create bar chart with traits on the x-axis, groups as different colored bars,
-    # but hide the legend (no need to show SIC)
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']  # blue, orange, green, red, purple
-    # Build a color map keyed by the readable trait label to ensure consistent coloring/order
+    # Color palette
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
     trait_palette = {TRAIT_LABELS.get(t, t): c for t, c in zip(TRAIT_COLS, colors)}
-    # Keep only traits actually present in the data to avoid extra keys
     present_traits = [t for t in trait_order]
     color_map = {k: trait_palette[k] for k in present_traits if k in trait_palette}
 
@@ -341,16 +324,15 @@ def plot_G_per_group_v2(df_Gv2: pd.DataFrame, id_col: str = 'SIC_1digit') -> go.
         template='simple_white'
     )
 
-    # spacing between bars and between groups
+    # Atur jarak antar bar dan grup
     fig.update_layout(
         height=600,
         margin=dict(l=40, r=40, t=60, b=40),
-        bargap=0.25,        # space between bars of adjacent location coordinates
-        bargroupgap=0.12,   # space between bars of the same location (groups)
-        showlegend=False    # do not show SIC legend as requested
+        bargap=0.25,
+        bargroupgap=0.12,
+        showlegend=False
     )
 
-    # enforce trait order on x-axis
     if trait_order:
         fig.update_xaxes(categoryorder='array', categoryarray=trait_order)
 
@@ -359,7 +341,6 @@ def plot_G_per_group_v2(df_Gv2: pd.DataFrame, id_col: str = 'SIC_1digit') -> go.
         textposition='outside'
     )
 
-    # clean axis titles (no SIC on axis)
     fig.update_xaxes(title=None)
     fig.update_yaxes(title="G_i(Trait)")
 
@@ -367,39 +348,33 @@ def plot_G_per_group_v2(df_Gv2: pd.DataFrame, id_col: str = 'SIC_1digit') -> go.
 
 # Dendrogram - PEARSON SIMILARITY
 def plot_pearson_dendrogram(sim_df: pd.DataFrame, id_col: str = None, title: str = None, height: int = 700):
-    # defensive copy / numpy array
     mat = sim_df.values.astype(float).copy()
 
-    # Convert correlation to distance
+    #Korelasi = 1 → jarak = 0 (sangat mirip)
+    # Korelasi = 0 → jarak = 1
+    # Korelasi = -1 → jarak = 2
     dist = 1.0 - mat
 
-    # Ensure symmetry and zero diagonal
     dist = (dist + dist.T) / 2.0
     np.fill_diagonal(dist, 0.0)
 
-    # Condensed distance vector required by linkage
     condensed = squareform(dist, checks=True)
 
-    # Build hierarchical clustering linkage from condensed distances
     linked = linkage(condensed, method='average')
 
-    # dynamic height: scale with number of variables so large matrices get taller plots
     n = mat.shape[0]
-    # pixels per item (tweakable). Add some padding for headers/margins.
     per_item_px = 28
     padding_px = 140
-    max_height_px = 3000  # cap to avoid extremely large outputs
+    max_height_px = 3000
     computed_height = max(height, min(max_height_px, int(n * per_item_px + padding_px)))
 
-    # Create dendrogram using the precomputed linkage
     fig = ff.create_dendrogram(
-        mat,  # data passed only so labels/order are preserved by the factory
+        mat,
         orientation='left',
         labels=sim_df.index.tolist(),
         linkagefun=lambda x: linked
     )
 
-    # Update layout to show distance scale that matches 1 - Pearson (max ≈ 2)
     fig.update_layout(
         height=computed_height,
         template="simple_white",
@@ -415,7 +390,6 @@ def plot_G_pairs_bar(df_pairs: pd.DataFrame, height: int = 720) -> go.Figure:
     if 'Personality Pair' not in df.columns or 'G(Pair)' not in df.columns:
         raise ValueError("df_pairs must contain 'Personality Pair' and 'G(Pair)' columns")
 
-    # sort so largest G appears first
     df_sorted = df.sort_values('G(Pair)', ascending=False).reset_index(drop=True)
 
     fig = px.bar(
@@ -437,7 +411,7 @@ def plot_G_pairs_bar(df_pairs: pd.DataFrame, height: int = 720) -> go.Figure:
 
     fig.update_layout(
         showlegend=False,
-        margin=dict(l=220, r=40, t=40, b=40),  # larger left margin for long category labels
+        margin=dict(l=220, r=40, t=40, b=40),
         template='simple_white',
         xaxis_title="G(Pair)",
         uniformtext_minsize=8,
@@ -474,7 +448,6 @@ def enable_radar_wrapper(min_height: int = 520):
 
         fig.update_layout = _enforce_min_height_and_margins
 
-        # apply extra polar/legend tweaks (safe to call)
         try:
             fig.update_layout(
                 polar=dict(
@@ -490,5 +463,4 @@ def enable_radar_wrapper(min_height: int = 520):
 
     plot_radar_chart = _wrapped
 
-# enable wrapper with default min_height
 enable_radar_wrapper(min_height=520)
